@@ -3,11 +3,14 @@ import type * as React from "react";
 import {
   CircleCheck,
   Clock,
+  Download,
   Eye,
   Plus,
+  RefreshCw,
   Search,
   Star,
   TriangleAlert,
+  Upload,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +48,7 @@ import {
 } from "@/domain/skyTime";
 import type { AppSettings, EventInstance } from "@/domain/types";
 import type { SkyCalendarEntry, SkyItemSummary } from "@/data/skygame";
+import { formatBytes, type AppUpdateState } from "@/tauri/updater";
 
 type SkyDataModule = typeof import("@/data/skygame");
 
@@ -759,6 +763,168 @@ export function SettingsPage({
   );
 }
 
+export function UpdatesPage({
+  updateState,
+  onRefresh,
+  onInstall,
+}: {
+  updateState: AppUpdateState;
+  onRefresh: () => void;
+  onInstall: () => void;
+}) {
+  const checking = updateState.status === "checking";
+  const installing =
+    updateState.status === "downloading" || updateState.status === "installing";
+  const canInstall = updateState.status === "available";
+  const progressLabel =
+    updateState.contentLength && updateState.downloadedBytes
+      ? `${formatBytes(updateState.downloadedBytes)} / ${formatBytes(updateState.contentLength)}`
+      : updateState.downloadedBytes
+        ? formatBytes(updateState.downloadedBytes)
+        : "";
+
+  return (
+    <>
+      <PageHeader
+        title="Updates"
+        description="Desktop app updates from the GitHub Releases channel."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={checking || installing}
+              onClick={onRefresh}
+            >
+              <RefreshCw className={cn("size-4", checking && "animate-spin")} />
+              Check
+            </Button>
+            <Button
+              type="button"
+              disabled={!canInstall || installing}
+              onClick={onInstall}
+            >
+              <Download className="size-4" />
+              Install update
+            </Button>
+          </div>
+        }
+      />
+      <div className="grid gap-4 p-5 xl:grid-cols-[1fr_340px]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UpdateStatusIcon status={updateState.status} />
+              {updateStatusTitle(updateState)}
+            </CardTitle>
+            <CardDescription>
+              Current version {updateState.currentVersion || "unknown"}
+              {updateState.latestVersion
+                ? ` / Latest version ${updateState.latestVersion}`
+                : null}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {updateState.status === "available" ? (
+              <div className="rounded-md border border-primary/25 bg-primary/10 p-3 text-sm text-primary">
+                Version {updateState.latestVersion} is ready to download and install.
+              </div>
+            ) : null}
+            {installing || updateState.status === "installed" ? (
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="font-medium">
+                    {updateState.status === "installing"
+                      ? "Installing"
+                      : updateState.status === "installed"
+                        ? "Installed"
+                        : "Downloading"}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {progressLabel ||
+                      (updateState.progress === null
+                        ? "Receiving update"
+                        : `${Math.round(updateState.progress * 100)}%`)}
+                  </span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={
+                    updateState.progress === null
+                      ? undefined
+                      : Math.round(updateState.progress * 100)
+                  }
+                  className="h-2 overflow-hidden rounded-sm bg-secondary"
+                >
+                  <div
+                    className={cn(
+                      "h-full bg-primary transition-all",
+                      updateState.progress === null && "w-1/2 animate-pulse",
+                    )}
+                    style={{
+                      width:
+                        updateState.progress === null
+                          ? undefined
+                          : `${Math.round(updateState.progress * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {updateState.error ? (
+              <div className="rounded-md border border-destructive/35 bg-destructive/10 p-3 text-sm text-destructive">
+                {updateState.error}
+              </div>
+            ) : null}
+            <div className="grid gap-2">
+              <h2 className="text-sm font-semibold">Changelog</h2>
+              <div className="theme-scrollbar max-h-[420px] overflow-auto rounded-md border border-border bg-card/70 p-3 text-sm text-muted-foreground">
+                {updateState.releaseNotes ? (
+                  <pre className="whitespace-pre-wrap font-sans">
+                    {updateState.releaseNotes}
+                  </pre>
+                ) : (
+                  <p>No release notes loaded.</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Release Channel</CardTitle>
+            <CardDescription>
+              GitHub latest release asset: latest.json
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm text-muted-foreground">
+            <InfoRow label="Repository" value="radcolor/sky_cotl_clock" />
+            <InfoRow
+              label="Endpoint"
+              value="github.com/radcolor/sky_cotl_clock/releases/latest"
+            />
+            <InfoRow
+              label="Published"
+              value={
+                updateState.releaseDate
+                  ? new Date(updateState.releaseDate).toLocaleString()
+                  : "Not available"
+              }
+            />
+            <Separator />
+            <p>
+              Windows installs use Tauri's passive installer mode and signed
+              MSI/EXE updater artifacts from the release.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    </>
+  );
+}
+
 export function Overlay({
   events,
   settings,
@@ -812,6 +978,57 @@ export function Overlay({
         ))}
       </div>
     </section>
+  );
+}
+
+function UpdateStatusIcon({ status }: { status: AppUpdateState["status"] }) {
+  if (status === "available" || status === "downloading" || status === "installing") {
+    return <Download className="size-4 text-primary" />;
+  }
+
+  if (status === "current" || status === "installed") {
+    return <CircleCheck className="size-4 text-primary" />;
+  }
+
+  if (status === "error" || status === "unsupported") {
+    return <TriangleAlert className="size-4 text-destructive" />;
+  }
+
+  if (status === "checking") {
+    return <RefreshCw className="size-4 animate-spin text-primary" />;
+  }
+
+  return <Upload className="size-4 text-muted-foreground" />;
+}
+
+function updateStatusTitle(updateState: AppUpdateState) {
+  if (updateState.status === "available") {
+    return `Update ${updateState.latestVersion} available`;
+  }
+
+  const titles: Record<AppUpdateState["status"], string> = {
+    idle: "Update check pending",
+    checking: "Checking for updates",
+    available: "Update available",
+    current: "App is up to date",
+    downloading: "Downloading update",
+    installing: "Installing update",
+    installed: "Update installed",
+    unsupported: "Updates unavailable",
+    error: "Update check failed",
+  };
+
+  return titles[updateState.status];
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1">
+      <span className="text-xs font-medium uppercase text-muted-foreground/70">
+        {label}
+      </span>
+      <span className="break-words text-foreground">{value}</span>
+    </div>
   );
 }
 

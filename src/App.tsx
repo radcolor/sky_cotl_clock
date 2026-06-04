@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { emit, listen } from "@tauri-apps/api/event";
 import "./App.css";
 import { AppSidebar, type AppPage } from "@/components/app-sidebar";
@@ -34,7 +35,16 @@ import {
   OverviewPage,
   PageHeader,
   SettingsPage,
+  UpdatesPage,
 } from "@/pages";
+import {
+  checkForAppUpdate,
+  initialUpdateState,
+  installAppUpdate,
+  type AppUpdateState,
+  type UpdateStatePatch,
+} from "@/tauri/updater";
+import { listenNativeThemeChange, syncNativeTheme } from "@/tauri/theme";
 
 const SETTINGS_KEY = "sky-cotl-clock-settings";
 
@@ -58,6 +68,8 @@ function App() {
   const [now, setNow] = useState(() => new Date());
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
   const [hotkeyError, setHotkeyError] = useState("");
+  const [updateState, setUpdateState] = useState<AppUpdateState>(initialUpdateState);
+  const pendingUpdate = useRef<Update | null>(null);
   const enabledEventsKey = useMemo(
     () => JSON.stringify(settings.events),
     [settings.events],
@@ -71,7 +83,38 @@ function App() {
   }, []);
 
   useEffect(() => {
-    applyAppearance(settings);
+    let cancelled = false;
+
+    const applyTheme = async () => {
+      const nativeTheme = await syncNativeTheme(settings.theme);
+      if (!cancelled) {
+        applyAppearance(settings, nativeTheme ?? undefined);
+      }
+    };
+
+    void applyTheme();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    settings.appearance.accentColor,
+    settings.appearance.fontFamily,
+    settings.theme,
+  ]);
+
+  useEffect(() => {
+    if (settings.theme !== "system") {
+      return;
+    }
+
+    const unlistenPromise = listenNativeThemeChange((nativeTheme) => {
+      applyAppearance(settings, nativeTheme);
+    });
+
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
   }, [
     settings.appearance.accentColor,
     settings.appearance.fontFamily,
@@ -141,6 +184,31 @@ function App() {
     settings.overlay.enabled,
     windowLabel,
   ]);
+
+  const patchUpdateState = (patch: UpdateStatePatch) =>
+    setUpdateState((current) => ({ ...current, ...patch }));
+
+  const refreshUpdate = async () => {
+    pendingUpdate.current = await checkForAppUpdate(patchUpdateState);
+  };
+
+  const installUpdate = async () => {
+    if (!pendingUpdate.current) {
+      pendingUpdate.current = await checkForAppUpdate(patchUpdateState);
+    }
+
+    if (pendingUpdate.current) {
+      await installAppUpdate(pendingUpdate.current, patchUpdateState);
+    }
+  };
+
+  useEffect(() => {
+    if (windowLabel !== "main") {
+      return;
+    }
+
+    void refreshUpdate();
+  }, [windowLabel]);
 
   useEffect(() => {
     if (windowLabel !== "main") {
@@ -235,6 +303,7 @@ function App() {
           selectedDate={selectedDate}
           settings={settings}
           planner={planner}
+          updateState={updateState}
           onPageChange={setActivePage}
           onSelectedDateChange={setSelectedDate}
           onThemeChange={(theme) => setSettings({ ...settings, theme })}
@@ -256,9 +325,12 @@ function App() {
                 planner={planner}
                 settings={settings}
                 hotkeyError={hotkeyError}
+                updateState={updateState}
                 onPlannerChange={setPlanner}
                 onSettingsChange={setSettings}
                 onToggleOverlay={() => void toggleOverlay(settings)}
+                onRefreshUpdate={() => void refreshUpdate()}
+                onInstallUpdate={() => void installUpdate()}
               />
             </div>
           </div>
@@ -276,9 +348,12 @@ function PageContent({
   planner,
   settings,
   hotkeyError,
+  updateState,
   onPlannerChange,
   onSettingsChange,
   onToggleOverlay,
+  onRefreshUpdate,
+  onInstallUpdate,
 }: {
   activePage: AppPage;
   now: Date;
@@ -287,9 +362,12 @@ function PageContent({
   planner: PlannerState;
   settings: AppSettings;
   hotkeyError: string;
+  updateState: AppUpdateState;
   onPlannerChange: (planner: PlannerState) => void;
   onSettingsChange: (settings: AppSettings) => void;
   onToggleOverlay: () => void;
+  onRefreshUpdate: () => void;
+  onInstallUpdate: () => void;
 }) {
   if (activePage === "overview") {
     return (
@@ -337,6 +415,16 @@ function PageContent({
     );
   }
 
+  if (activePage === "updates") {
+    return (
+      <UpdatesPage
+        updateState={updateState}
+        onRefresh={onRefreshUpdate}
+        onInstall={onInstallUpdate}
+      />
+    );
+  }
+
   return (
     <PageHeader
       title="Not Found"
@@ -353,6 +441,7 @@ function pageTitle(page: AppPage) {
     collection: "Collection",
     overlay: "Overlay",
     settings: "Settings",
+    updates: "Updates",
   };
 
   return titles[page];

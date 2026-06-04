@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "devradcolorsky_cotl_clock",
+  "productName": "isekai",
   "version": "0.1.0",
   "identifier": "dev.radcolor.sky-cotl-clock",
   "build": {
@@ -13,15 +13,15 @@
     "windows": [
       {
         "label": "main",
-        "title": "Sky COTL Clock",
-        "width": 1180,
-        "height": 760,
+        "title": "Isekai",
+        "width": 1280,
+        "height": 860,
         "minWidth": 980,
         "minHeight": 640
       },
       {
         "label": "overlay",
-        "title": "Sky Clock Overlay",
+        "title": "Isekai Clock Overlay",
         "width": 360,
         "height": 420,
         "visible": false,
@@ -41,6 +41,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -48,5 +49,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5OEVBRkUyNTJCMjI4QzAKUldUQUtMSlM0cStPV2RoOUhJQU85Nk9hSy80N3RCRjJBeFJrUyttVUN3dEZLbkQrZndmVWtic2wK",
+      "endpoints": [
+        "https://github.com/radcolor/sky_cotl_clock/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

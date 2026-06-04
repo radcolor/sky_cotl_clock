@@ -224,16 +224,22 @@ export function resolveTheme(
   return theme;
 }
 
-export function applyTheme(theme: AppSettings["theme"]) {
+export function applyTheme(
+  theme: AppSettings["theme"],
+  resolvedTheme?: "dark" | "light",
+) {
   const media = window.matchMedia("(prefers-color-scheme: dark)");
-  const resolved = resolveTheme(theme, media.matches);
+  const resolved = resolvedTheme ?? resolveTheme(theme, media.matches);
   document.documentElement.classList.toggle("dark", resolved === "dark");
   document.documentElement.style.colorScheme = resolved;
 }
 
-export function applyAppearance(settings: AppSettings) {
+export function applyAppearance(
+  settings: AppSettings,
+  resolvedTheme?: "dark" | "light",
+) {
   const media = window.matchMedia("(prefers-color-scheme: dark)");
-  const resolved = resolveTheme(settings.theme, media.matches);
+  const resolved = resolvedTheme ?? resolveTheme(settings.theme, media.matches);
   const accent =
     ACCENT_OPTIONS.find((option) => option.id === settings.appearance.accentColor) ??
     ACCENT_OPTIONS[0];

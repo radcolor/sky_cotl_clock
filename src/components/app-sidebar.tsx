@@ -11,6 +11,7 @@ import {
   Settings,
   Sparkles,
   Sun,
+  Upload,
 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -35,6 +36,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import type { AppSettings } from "@/domain/types";
 import type { PlannerState } from "@/domain/planner";
+import type { AppUpdateState } from "@/tauri/updater";
 import { cn } from "@/lib/utils";
 
 export type AppPage =
@@ -43,13 +45,15 @@ export type AppPage =
   | "goals"
   | "collection"
   | "overlay"
-  | "settings";
+  | "settings"
+  | "updates";
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activePage: AppPage;
   selectedDate: Date;
   settings: AppSettings;
   planner: PlannerState;
+  updateState: AppUpdateState;
   onPageChange: (page: AppPage) => void;
   onSelectedDateChange: (date: Date) => void;
   onThemeChange: (theme: AppSettings["theme"]) => void;
@@ -76,7 +80,10 @@ const sections: Array<{
   },
   {
     title: "System",
-    items: [{ id: "settings", title: "Settings", icon: Settings }],
+    items: [
+      { id: "settings", title: "Settings", icon: Settings },
+      { id: "updates", title: "Updates", icon: Upload },
+    ],
   },
 ];
 
@@ -91,6 +98,7 @@ export function AppSidebar({
   selectedDate,
   settings,
   planner,
+  updateState,
   onPageChange,
   onSelectedDateChange,
   onThemeChange,
@@ -133,8 +141,9 @@ export function AppSidebar({
             key={section.title}
             title={section.title}
             items={section.items}
-            defaultOpen={index < 2}
+            defaultOpen={index < 2 || updateState.status === "available"}
             activePage={activePage}
+            updateAvailable={updateState.status === "available"}
             onPageChange={onPageChange}
           />
         ))}
@@ -147,6 +156,18 @@ export function AppSidebar({
               {planner.goals.filter((goal) => goal.status !== "done").length}
             </Badge>
           </div>
+          {updateState.status === "available" ? (
+            <button
+              type="button"
+              className="flex items-center justify-between gap-2 rounded-md border border-sidebar-primary/30 bg-sidebar-primary/10 px-2 py-1.5 text-left text-xs text-sidebar-foreground transition-colors hover:bg-sidebar-primary/15"
+              onClick={() => onPageChange("updates")}
+            >
+              <span className="min-w-0 truncate font-medium">
+                Update {updateState.latestVersion}
+              </span>
+              <Badge className="h-5 rounded-sm px-1.5 text-[0.65rem]">New</Badge>
+            </button>
+          ) : null}
           <ThemeTabs value={settings.theme} onValueChange={onThemeChange} />
         </div>
         <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
@@ -214,12 +235,14 @@ function SidebarSection({
   items,
   defaultOpen,
   activePage,
+  updateAvailable,
   onPageChange,
 }: {
   title: string;
   items: Array<{ id: AppPage; title: string; icon: React.ElementType }>;
   defaultOpen: boolean;
   activePage: AppPage;
+  updateAvailable: boolean;
   onPageChange: (page: AppPage) => void;
 }) {
   return (
@@ -247,6 +270,11 @@ function SidebarSection({
                   >
                     <item.icon />
                     <span>{item.title}</span>
+                    {item.id === "updates" && updateAvailable ? (
+                      <Badge className="ml-auto h-5 rounded-sm px-1.5 text-[0.65rem]">
+                        New
+                      </Badge>
+                    ) : null}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
