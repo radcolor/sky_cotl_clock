@@ -26,11 +26,11 @@ Run the desktop app during development:
 bun tauri dev
 ```
 
-## Data Credit
+## Tech Stack
 
-This app bundles a selected offline subset of
-[SkyGame-Data](https://github.com/Silverfeelin/SkyGame-Data) by Silverfeelin.
-SkyGame-Data is MIT licensed and is used as game data input for the planner and
-collection views.
+- Desktop: Tauri 2 and Rust
+- UI: React 19, TypeScript, Vite, shadcn/ui, Radix UI, lucide-react, and Tailwind CSS
+- Time: `@js-temporal/polyfill` and `date-fns`
+- Data: [`skygame-data`](https://www.npmjs.com/package/skygame-data)
 
 Sky: Children of the Light is by thatgamecompany. This project is unofficial.
