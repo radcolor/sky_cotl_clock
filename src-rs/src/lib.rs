@@ -9,13 +9,13 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let menu = MenuBuilder::new(app)
-                .text("show-main", "Show Sky COTL Clock")
+                .text("show-main", "Show Isekai")
                 .separator()
                 .text("quit", "Quit")
                 .build()?;
 
             let mut tray = TrayIconBuilder::with_id("main-tray")
-                .tooltip("Sky COTL Clock")
+                .tooltip("Isekai")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {

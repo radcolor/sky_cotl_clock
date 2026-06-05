@@ -116,7 +116,7 @@ export function AppSidebar({
             <MoonStar className="size-4" />
           </div>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-            <p className="truncate text-sm font-semibold">Sky COTL Clock</p>
+            <p className="truncate text-sm font-semibold">Isekai</p>
             <p className="truncate text-xs font-medium text-sidebar-foreground/65">
               Planner + overlay
             </p>

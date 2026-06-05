@@ -1,4 +1,4 @@
-# Sky COTL Clock
+# Isekai
 
 Desktop Sky: Children of the Light clock and planner built with Tauri 2,
 React, Rust, shadcn/ui, and Tailwind CSS.
@@ -17,7 +17,7 @@ The app is Windows-first and includes:
 bun install
 bun run test
 bun run build
-cd src-tauri && cargo check
+cd src-rs && cargo check
 ```
 
 Run the desktop app during development:
