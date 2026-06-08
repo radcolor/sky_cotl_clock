@@ -6,7 +6,6 @@ import {
   Eye,
   Monitor,
   Moon,
-  MoonStar,
   Search,
   Settings,
   Sparkles,
@@ -26,7 +25,6 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -110,21 +108,8 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="border-b border-sidebar-border">
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-primary/30">
-            <MoonStar className="size-4" />
-          </div>
-          <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-            <p className="truncate text-sm font-semibold">Isekai</p>
-            <p className="truncate text-xs font-medium text-sidebar-foreground/65">
-              Planner + overlay
-            </p>
-          </div>
-        </div>
-      </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup className="px-0 group-data-[collapsible=icon]:hidden">
+        <SidebarGroup className="px-0 pt-2 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent>
             <Calendar
               mode="single"

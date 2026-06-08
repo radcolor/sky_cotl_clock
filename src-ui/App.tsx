@@ -1,13 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Update } from "@tauri-apps/plugin-updater";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Minus, PanelLeft, Square, X } from "lucide-react";
+import { toast } from "sonner";
 import "./App.css";
 import { AppSidebar, type AppPage } from "@/components/app-sidebar";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DEFAULT_SETTINGS, mergeSettings } from "@/domain/settings";
 import { generateEventInstances } from "@/domain/events";
@@ -47,6 +53,9 @@ import {
 import { listenNativeThemeChange, syncNativeTheme } from "@/tauri/theme";
 
 const SETTINGS_KEY = "sky-cotl-clock-settings";
+const REMINDERS_KEY = "sky-cotl-clock-reminders";
+const REMINDER_LEAD_MS = 10_000;
+const REMINDER_TRIGGER_WINDOW_MS = 1_500;
 
 function readStoredSettings() {
   try {
@@ -58,6 +67,66 @@ function readStoredSettings() {
 
 function readStoredPlanner() {
   return deserializePlannerState(localStorage.getItem(PLANNER_STORAGE_KEY));
+}
+
+function readStoredReminders() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REMINDERS_KEY) ?? "{}");
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, enabled]) => enabled === true),
+    ) as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+function eventReminderKey(event: EventInstance) {
+  return `${event.definitionId}:${event.startsAtUtc}`;
+}
+
+function reminderBody(event: EventInstance) {
+  return [event.location, event.phaseLabel, `${event.localTimeLabel} local`]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function playReminderSound() {
+  const AudioContextCtor = window.AudioContext;
+  if (!AudioContextCtor) {
+    return;
+  }
+
+  const context = new AudioContextCtor();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.value = 880;
+  gain.gain.setValueAtTime(0.0001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.32);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + 0.34);
+  window.setTimeout(() => void context.close(), 450);
+}
+
+async function ensureNotificationPermission() {
+  if (!isTauriRuntime()) {
+    return false;
+  }
+
+  let granted = await isPermissionGranted();
+  if (!granted) {
+    granted = (await requestPermission()) === "granted";
+  }
+
+  return granted;
 }
 
 function isEditableTarget(target: EventTarget | null) {
@@ -87,6 +156,8 @@ function isBlockedProductionShortcut(event: KeyboardEvent) {
 function App() {
   const [settings, setSettings] = useState<AppSettings>(readStoredSettings);
   const [planner, setPlanner] = useState<PlannerState>(readStoredPlanner);
+  const [reminders, setReminders] =
+    useState<Record<string, boolean>>(readStoredReminders);
   const [activePage, setActivePage] = useState<AppPage>("overview");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
@@ -203,6 +274,14 @@ function App() {
 
     localStorage.setItem(PLANNER_STORAGE_KEY, serializePlannerState(planner));
   }, [planner, windowLabel]);
+
+  useEffect(() => {
+    if (windowLabel !== "main") {
+      return;
+    }
+
+    localStorage.setItem(REMINDERS_KEY, JSON.stringify(reminders));
+  }, [reminders, windowLabel]);
 
   useEffect(() => {
     void configureOverlayWindow(settings);
@@ -426,6 +505,86 @@ function App() {
     () => events.slice(0, settings.overlay.maxEvents),
     [events, settings.overlay.maxEvents],
   );
+  const firedReminders = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (windowLabel !== "main") {
+      return;
+    }
+
+    const activeKeys = new Set(events.map(eventReminderKey));
+    firedReminders.current.forEach((key) => {
+      if (!activeKeys.has(key)) {
+        firedReminders.current.delete(key);
+      }
+    });
+
+    const dueEvents = events.filter((event) => {
+      const key = eventReminderKey(event);
+      return (
+        reminders[key] &&
+        !firedReminders.current.has(key) &&
+        event.status === "upcoming" &&
+        event.countdownMs <= REMINDER_LEAD_MS &&
+        event.countdownMs > REMINDER_LEAD_MS - REMINDER_TRIGGER_WINDOW_MS
+      );
+    });
+
+    dueEvents.forEach((event) => {
+      const key = eventReminderKey(event);
+      firedReminders.current.add(key);
+      void deliverReminder(event);
+    });
+  }, [events, reminders, windowLabel]);
+
+  const toggleReminder = async (event: EventInstance) => {
+    const key = eventReminderKey(event);
+    const enabled = !reminders[key];
+
+    if (enabled && isTauriRuntime()) {
+      void ensureNotificationPermission();
+    }
+
+    setReminders((current) => {
+      const next = { ...current };
+      if (enabled) {
+        next[key] = true;
+        firedReminders.current.delete(key);
+      } else {
+        delete next[key];
+        firedReminders.current.delete(key);
+      }
+
+      return next;
+    });
+
+    toast(enabled ? "Reminder enabled" : "Reminder disabled", {
+      description: `${event.title} - ${event.localTimeLabel} local`,
+    });
+  };
+
+  const deliverReminder = async (event: EventInstance) => {
+    const title = `${event.title} starts in 10 seconds`;
+    const body = reminderBody(event);
+
+    if (isTauriRuntime()) {
+      const current = getCurrentWindow();
+      const [visible, minimized] = await Promise.all([
+        current.isVisible(),
+        current.isMinimized(),
+      ]);
+
+      if (!visible || minimized) {
+        if (await ensureNotificationPermission()) {
+          sendNotification({ title, body });
+        }
+        return;
+      }
+    }
+
+    playReminderSound();
+    toast(title, { description: body });
+  };
 
   if (!windowLabel) {
     return null;
@@ -437,46 +596,157 @@ function App() {
 
   return (
     <TooltipProvider>
-      <SidebarProvider>
-        <AppSidebar
-          activePage={activePage}
-          selectedDate={selectedDate}
-          settings={settings}
-          planner={planner}
-          updateState={updateState}
-          onPageChange={setActivePage}
-          onSelectedDateChange={setSelectedDate}
-          onThemeChange={(theme) => setSettings({ ...settings, theme })}
-        />
-        <SidebarInset className="h-svh min-h-0 overflow-hidden">
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background/90 px-4 shadow-[0_1px_2px_color-mix(in_oklch,var(--foreground)_6%,transparent)]">
-              <SidebarTrigger />
-              <div className="text-sm font-medium text-muted-foreground">
-                {pageTitle(activePage)}
+      <div className="app-main-shell flex h-svh min-h-0 flex-col overflow-hidden">
+        <SidebarProvider className="min-h-0 flex-1 flex-col">
+          <AppTitlebar activePage={activePage} />
+          <div className="app-workspace flex min-h-0 flex-1">
+            <AppSidebar
+              activePage={activePage}
+              selectedDate={selectedDate}
+              settings={settings}
+              planner={planner}
+              updateState={updateState}
+              onPageChange={setActivePage}
+              onSelectedDateChange={setSelectedDate}
+              onThemeChange={(theme) => setSettings({ ...settings, theme })}
+            />
+            <SidebarInset className="flex h-full min-h-0 overflow-hidden">
+              <div className="theme-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+                <PageContent
+                  activePage={activePage}
+                  now={now}
+                  selectedDate={selectedDate}
+                  events={events}
+                  planner={planner}
+                  settings={settings}
+                  hotkeyError={hotkeyError}
+                  updateState={updateState}
+                  reminders={reminders}
+                  onPlannerChange={setPlanner}
+                  onSettingsChange={setSettings}
+                  onToggleOverlay={() => void toggleOverlay(settings)}
+                  onToggleReminder={(event) => void toggleReminder(event)}
+                  onRefreshUpdate={() => void refreshUpdate()}
+                  onInstallUpdate={() => void installUpdate()}
+                />
               </div>
-            </div>
-            <div className="theme-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-              <PageContent
-                activePage={activePage}
-                now={now}
-                selectedDate={selectedDate}
-                events={events}
-                planner={planner}
-                settings={settings}
-                hotkeyError={hotkeyError}
-                updateState={updateState}
-                onPlannerChange={setPlanner}
-                onSettingsChange={setSettings}
-                onToggleOverlay={() => void toggleOverlay(settings)}
-                onRefreshUpdate={() => void refreshUpdate()}
-                onInstallUpdate={() => void installUpdate()}
-              />
-            </div>
+            </SidebarInset>
           </div>
-        </SidebarInset>
-      </SidebarProvider>
+        </SidebarProvider>
+        <Toaster />
+      </div>
     </TooltipProvider>
+  );
+}
+
+function AppTitlebar({ activePage }: { activePage: AppPage }) {
+  const { toggleSidebar } = useSidebar();
+  const safeWindowAction = (
+    action: (windowControls: ReturnType<typeof getCurrentWindow>) => Promise<void>,
+  ) => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    void action(getCurrentWindow());
+  };
+
+  return (
+    <div className="app-titlebar relative z-50 flex h-8 shrink-0 select-none items-center border-b border-border/80 bg-sidebar/95 text-sidebar-foreground">
+      <div
+        data-tauri-drag-region
+        className="app-titlebar-drag flex h-full min-w-0 flex-1 items-center gap-2 pl-2"
+      >
+        <button
+          type="button"
+          aria-label="Toggle sidebar"
+          title="Toggle sidebar"
+          className="app-titlebar-sidebar-toggle flex size-8 items-center justify-center text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          onClick={toggleSidebar}
+        >
+          <PanelLeft className="size-4" />
+        </button>
+        <div
+          data-tauri-drag-region
+          className="mx-1 h-4 w-px bg-sidebar-border"
+        />
+        <span
+          data-tauri-drag-region
+          className="truncate text-xs font-semibold"
+        >
+          Isekai
+        </span>
+        <div
+          data-tauri-drag-region
+          className="mx-1 hidden h-4 w-px bg-sidebar-border sm:block"
+        />
+        <span
+          data-tauri-drag-region
+          className="hidden truncate text-xs font-medium text-muted-foreground sm:block"
+        >
+          {pageTitle(activePage)}
+        </span>
+        <div
+          data-tauri-drag-region
+          className="min-w-0 flex-1 self-stretch"
+        />
+      </div>
+      <div className="flex h-full shrink-0 items-center">
+        <TitlebarWindowButton
+          label="Minimize"
+          onClick={() =>
+            safeWindowAction((windowControls) => windowControls.minimize())
+          }
+        >
+          <Minus />
+        </TitlebarWindowButton>
+        <TitlebarWindowButton
+          label="Maximize"
+          onClick={() =>
+            safeWindowAction((windowControls) => windowControls.toggleMaximize())
+          }
+        >
+          <Square />
+        </TitlebarWindowButton>
+        <TitlebarWindowButton
+          label="Close"
+          danger
+          onClick={() =>
+            safeWindowAction((windowControls) => windowControls.close())
+          }
+        >
+          <X />
+        </TitlebarWindowButton>
+      </div>
+    </div>
+  );
+}
+
+function TitlebarWindowButton({
+  label,
+  danger,
+  onClick,
+  children,
+}: {
+  label: string;
+  danger?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Button
+      aria-label={label}
+      title={label}
+      variant="ghost"
+      className={
+        danger
+          ? "h-8 w-10 rounded-none text-muted-foreground hover:bg-destructive hover:text-white"
+          : "h-8 w-10 rounded-none text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+      }
+      onClick={onClick}
+    >
+      {children}
+    </Button>
   );
 }
 
@@ -489,9 +759,11 @@ function PageContent({
   settings,
   hotkeyError,
   updateState,
+  reminders,
   onPlannerChange,
   onSettingsChange,
   onToggleOverlay,
+  onToggleReminder,
   onRefreshUpdate,
   onInstallUpdate,
 }: {
@@ -503,9 +775,11 @@ function PageContent({
   settings: AppSettings;
   hotkeyError: string;
   updateState: AppUpdateState;
+  reminders: Record<string, boolean>;
   onPlannerChange: (planner: PlannerState) => void;
   onSettingsChange: (settings: AppSettings) => void;
   onToggleOverlay: () => void;
+  onToggleReminder: (event: EventInstance) => void;
   onRefreshUpdate: () => void;
   onInstallUpdate: () => void;
 }) {
@@ -515,7 +789,9 @@ function PageContent({
         now={now}
         events={events}
         settings={settings}
+        reminders={reminders}
         onToggleOverlay={onToggleOverlay}
+        onToggleReminder={onToggleReminder}
       />
     );
   }

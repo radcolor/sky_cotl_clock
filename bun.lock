@@ -17,6 +17,7 @@
         "@tailwindcss/vite": "^4.3.0",
         "@tauri-apps/api": "^2",
         "@tauri-apps/plugin-global-shortcut": "^2.3.2",
+        "@tauri-apps/plugin-notification": "^2.3.3",
         "@tauri-apps/plugin-opener": "^2",
         "@tauri-apps/plugin-updater": "^2.10.1",
         "class-variance-authority": "^0.7.1",
@@ -31,6 +32,7 @@
         "remark-gfm": "^4.0.1",
         "shadcn": "^4.10.0",
         "skygame-data": "^1.2.21",
+        "sonner": "^2.0.7",
         "tailwind-merge": "^3.6.0",
         "tailwindcss": "^4.3.0",
         "tw-animate-css": "^1.4.0",
@@ -470,6 +472,8 @@
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.11.2", "", { "os": "win32", "cpu": "x64" }, "sha512-d2JchlFIpZevZVReyqhQOekJmb1UH3rhZ5VX6sH3ty9ETE0TKQavpihvoScUXfKKpW6HZC0MrFGRU0ZtD+w3gA=="],
 
     "@tauri-apps/plugin-global-shortcut": ["@tauri-apps/plugin-global-shortcut@2.3.2", "", { "dependencies": { "@tauri-apps/api": "^2.11.0" } }, "sha512-UReHNXrLvpEjylE4jb4oCYiy96uRykPUthoCQCmRXYrd5hs5X9DrW+qOn7GLW57EJN4tdK8bgK5twBTz2NOxzA=="],
+
+    "@tauri-apps/plugin-notification": ["@tauri-apps/plugin-notification@2.3.3", "", { "dependencies": { "@tauri-apps/api": "^2.8.0" } }, "sha512-Zw+ZH18RJb41G4NrfHgIuofJiymusqN+q8fGUIIV7vyCH+5sSn5coqRv/MWB9qETsUs97vmU045q7OyseCV3Qg=="],
 
     "@tauri-apps/plugin-opener": ["@tauri-apps/plugin-opener@2.5.4", "", { "dependencies": { "@tauri-apps/api": "^2.11.0" } }, "sha512-1HnPkb+AmgO29HBazm4uPLKB+r7zzcTBW1d0fyYp1uP+jwtpoiNDGKMMzz58SFp49nOIrxdE3aUJtT57lfO9CQ=="],
 
@@ -1210,6 +1214,8 @@
     "sisteransi": ["sisteransi@1.0.5", "", {}, "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg=="],
 
     "skygame-data": ["skygame-data@1.2.21", "", { "dependencies": { "jsonc-parser": "^3.3.1", "luxon": "^3.7.2" } }, "sha512-15p2NJwhzJhN8PiwqoYXejiNZvUTL4ckFvAqhSD3m2Jonrs+2AQNgb5JrZoNR2Fo+3xrs5e5Li8rc6prMPRGmw=="],
+
+    "sonner": ["sonner@2.0.7", "", { "peerDependencies": { "react": "^18.0.0 || ^19.0.0 || ^19.0.0-rc", "react-dom": "^18.0.0 || ^19.0.0 || ^19.0.0-rc" } }, "sha512-W6ZN4p58k8aDKA4XPcx2hpIQXBRAgyiWVkYhT7CvK6D3iAu7xjvVyhQHg2/iaKJZ1XVJ4r7XuwGL+WGEK37i9w=="],
 
     "source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 

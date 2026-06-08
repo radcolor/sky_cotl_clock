@@ -4,6 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  Bell,
+  BellOff,
   CircleCheck,
   Clock,
   Download,
@@ -160,12 +162,16 @@ export function OverviewPage({
   now,
   events,
   settings,
+  reminders,
   onToggleOverlay,
+  onToggleReminder,
 }: {
   now: Date;
   events: EventInstance[];
   settings: AppSettings;
+  reminders: Record<string, boolean>;
   onToggleOverlay: () => void;
+  onToggleReminder: (event: EventInstance) => void;
 }) {
   const skyData = useSkyData({ defer: true });
   const skyClock = skyNow(now);
@@ -232,7 +238,12 @@ export function OverviewPage({
             </CardHeader>
             <CardContent className="grid gap-2">
               {events.slice(0, 10).map((event) => (
-                <EventRow key={`${event.definitionId}-${event.startsAtUtc}`} event={event} />
+                <EventRow
+                  key={`${event.definitionId}-${event.startsAtUtc}`}
+                  event={event}
+                  reminderEnabled={Boolean(reminders[eventReminderKey(event)])}
+                  onToggleReminder={onToggleReminder}
+                />
               ))}
             </CardContent>
           </Card>
@@ -1262,24 +1273,67 @@ function MetricCard({
 }) {
   return (
     <Card>
-      <CardContent className="flex items-center justify-between p-4">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">
-            {value}
-          </p>
-        </div>
-        <div className="flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15 [&_svg]:size-5">
+      <CardContent className="grid min-h-[6.5rem] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 p-3.5">
+        <p className="min-w-0 text-sm font-semibold leading-snug text-muted-foreground">
+          {title}
+        </p>
+        <div className="row-span-2 flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/15 [&_svg]:size-5">
           {icon}
         </div>
+        <MetricValue value={value} />
       </CardContent>
     </Card>
   );
 }
 
-function EventRow({ event }: { event: EventInstance }) {
+function MetricValue({ value }: { value: string }) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  const timeMatch = normalized.match(/^(.+?)\s+(am|pm)(?:\s+(.+))?$/i);
+
+  if (timeMatch) {
+    const [, time, period, zone] = timeMatch;
+
+    return (
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1 text-foreground">
+        <span className="text-[1.35rem] font-semibold leading-none tabular-nums">
+          {time}
+        </span>
+        <span className="text-sm font-bold uppercase leading-none tracking-normal">
+          {period}
+        </span>
+        {zone ? (
+          <span className="text-sm font-bold uppercase leading-none tracking-normal text-muted-foreground">
+            {zone}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
-    <div className="grid gap-2 rounded-md border border-border bg-card/70 p-3 transition-colors hover:bg-muted/25 md:grid-cols-[1fr_auto] md:items-center">
+    <p className="whitespace-nowrap text-[1.35rem] font-semibold leading-none tabular-nums text-foreground">
+      {normalized}
+    </p>
+  );
+}
+
+function eventReminderKey(event: EventInstance) {
+  return `${event.definitionId}:${event.startsAtUtc}`;
+}
+
+function EventRow({
+  event,
+  reminderEnabled,
+  onToggleReminder,
+}: {
+  event: EventInstance;
+  reminderEnabled: boolean;
+  onToggleReminder: (event: EventInstance) => void;
+}) {
+  const ReminderIcon = reminderEnabled ? Bell : BellOff;
+
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-card/70 p-3 transition-colors hover:bg-muted/25 md:grid-cols-[1fr_auto_auto] md:items-center">
       <div className="grid gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-medium">{event.title}</p>
@@ -1296,6 +1350,22 @@ function EventRow({ event }: { event: EventInstance }) {
           {event.localTimeLabel} local / {event.skyTimeLabel}
         </p>
       </div>
+      <Button
+        type="button"
+        variant={reminderEnabled ? "secondary" : "ghost"}
+        size="icon-sm"
+        className="justify-self-start md:justify-self-end"
+        aria-pressed={reminderEnabled}
+        aria-label={
+          reminderEnabled
+            ? `Disable reminder for ${event.title}`
+            : `Enable reminder for ${event.title}`
+        }
+        title={reminderEnabled ? "Disable reminder" : "Remind me 10s before"}
+        onClick={() => onToggleReminder(event)}
+      >
+        <ReminderIcon />
+      </Button>
     </div>
   );
 }
