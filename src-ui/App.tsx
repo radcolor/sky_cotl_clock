@@ -19,12 +19,16 @@ import { DEFAULT_SETTINGS, mergeSettings } from "@/domain/settings";
 import { generateEventInstances } from "@/domain/events";
 import {
   deserializePlannerState,
+  moveActiveRouteTarget,
   PLANNER_STORAGE_KEY,
+  toggleMiniMapExpanded,
+  toggleRouteTargetComplete,
   serializePlannerState,
   type PlannerState,
 } from "@/domain/planner";
-import { applyAppearance } from "@/domain/theme";
+import { applyAppearance, resolveTheme } from "@/domain/theme";
 import type { AppSettings, EventInstance } from "@/domain/types";
+import { skyDataIndex } from "@/data/skygame";
 import {
   configureOverlayWindow,
   getWindowLabel,
@@ -40,6 +44,7 @@ import {
   OverlaySettingsPage,
   OverviewPage,
   PageHeader,
+  RoutesPage,
   SettingsPage,
   UpdatesPage,
 } from "@/pages";
@@ -164,6 +169,7 @@ function App() {
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
   const [hotkeyError, setHotkeyError] = useState("");
   const [updateState, setUpdateState] = useState<AppUpdateState>(initialUpdateState);
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("dark");
   const pendingUpdate = useRef<Update | null>(null);
   const enabledEventsKey = useMemo(
     () => JSON.stringify(settings.events),
@@ -222,7 +228,14 @@ function App() {
     const applyTheme = async () => {
       const nativeTheme = await syncNativeTheme(settings.theme);
       if (!cancelled) {
-        applyAppearance(settings, nativeTheme ?? undefined);
+        const resolved =
+          nativeTheme ??
+          resolveTheme(
+            settings.theme,
+            window.matchMedia("(prefers-color-scheme: dark)").matches,
+          );
+        applyAppearance(settings, resolved);
+        setResolvedTheme(resolved);
       }
     };
 
@@ -244,6 +257,7 @@ function App() {
 
     const unlistenPromise = listenNativeThemeChange((nativeTheme) => {
       applyAppearance(settings, nativeTheme);
+      setResolvedTheme(nativeTheme);
     });
 
     return () => {
@@ -273,6 +287,10 @@ function App() {
     }
 
     localStorage.setItem(PLANNER_STORAGE_KEY, serializePlannerState(planner));
+    window.dispatchEvent(new CustomEvent("sky-planner-changed"));
+    if (isTauriRuntime()) {
+      void emit("sky-planner-changed", planner);
+    }
   }, [planner, windowLabel]);
 
   useEffect(() => {
@@ -293,19 +311,30 @@ function App() {
     }
 
     const syncSettings = () => setSettings(readStoredSettings());
+    const syncPlanner = () => setPlanner(readStoredPlanner());
     const unlistenPromise = isTauriRuntime()
       ? listen<AppSettings>("sky-settings-changed", (event) =>
           setSettings(mergeSettings(event.payload)),
         )
       : Promise.resolve(() => undefined);
+    const unlistenPlannerPromise = isTauriRuntime()
+      ? listen<PlannerState>("sky-planner-changed", (event) =>
+          setPlanner(event.payload),
+        )
+      : Promise.resolve(() => undefined);
 
     window.addEventListener("storage", syncSettings);
     window.addEventListener("sky-settings-changed", syncSettings);
+    window.addEventListener("storage", syncPlanner);
+    window.addEventListener("sky-planner-changed", syncPlanner);
 
     return () => {
       window.removeEventListener("storage", syncSettings);
       window.removeEventListener("sky-settings-changed", syncSettings);
+      window.removeEventListener("storage", syncPlanner);
+      window.removeEventListener("sky-planner-changed", syncPlanner);
       void unlistenPromise.then((unlisten) => unlisten());
+      void unlistenPlannerPromise.then((unlisten) => unlisten());
     };
   }, [windowLabel]);
 
@@ -319,10 +348,55 @@ function App() {
       return;
     }
 
-    void registerAppHotkeys(settings, setHotkeyError);
+    const getRouteTargetCount = () =>
+      planner.activeRoute.areaGuid
+        ? skyDataIndex.getRouteTargets(
+            planner.activeRoute.areaGuid,
+            planner.activeRoute.filters,
+          ).length
+        : 0;
+    const getActiveTargetGuid = () =>
+      skyDataIndex.getActiveRouteTarget(
+        planner.activeRoute,
+        planner.routeProgress,
+      )?.target.guid ?? null;
+
+    void registerAppHotkeys(settings, setHotkeyError, {
+      cycleOverlayMode: () =>
+        setSettings((current) => ({
+          ...current,
+          overlay: {
+            ...current.overlay,
+            mode: nextOverlayMode(current.overlay.mode),
+          },
+        })),
+      nextRouteTarget: () =>
+        setPlanner((current) =>
+          moveActiveRouteTarget(current, 1, getRouteTargetCount()),
+        ),
+      previousRouteTarget: () =>
+        setPlanner((current) =>
+          moveActiveRouteTarget(current, -1, getRouteTargetCount()),
+        ),
+      toggleRouteTargetComplete: () => {
+        const targetGuid = getActiveTargetGuid();
+        if (targetGuid) {
+          setPlanner((current) => toggleRouteTargetComplete(current, targetGuid));
+        }
+      },
+      toggleMiniMapExpanded: () =>
+        setPlanner((current) => toggleMiniMapExpanded(current)),
+    });
   }, [
+    planner.activeRoute,
+    planner.routeProgress,
+    settings.hotkeys.cycleOverlayMode,
+    settings.hotkeys.nextRouteTarget,
+    settings.hotkeys.previousRouteTarget,
     settings.hotkeys.showMainWindow,
+    settings.hotkeys.toggleMiniMapExpanded,
     settings.hotkeys.toggleOverlay,
+    settings.hotkeys.toggleRouteTargetComplete,
     settings.overlay.enabled,
     windowLabel,
   ]);
@@ -558,7 +632,9 @@ function App() {
       return next;
     });
 
-    toast(enabled ? "Reminder enabled" : "Reminder disabled", {
+    const notify = enabled ? toast.success : toast.info;
+
+    notify(enabled ? "Reminder enabled" : "Reminder disabled", {
       description: `${event.title} - ${event.localTimeLabel} local`,
     });
   };
@@ -583,7 +659,7 @@ function App() {
     }
 
     playReminderSound();
-    toast(title, { description: body });
+    toast.info(title, { description: body });
   };
 
   if (!windowLabel) {
@@ -591,7 +667,14 @@ function App() {
   }
 
   if (windowLabel === "overlay") {
-    return <Overlay events={overlayEvents} settings={settings} animated />;
+    return (
+      <Overlay
+        events={overlayEvents}
+        settings={settings}
+        planner={planner}
+        animated
+      />
+    );
   }
 
   return (
@@ -633,7 +716,7 @@ function App() {
             </SidebarInset>
           </div>
         </SidebarProvider>
-        <Toaster />
+        <Toaster theme={resolvedTheme} />
       </div>
     </TooltipProvider>
   );
@@ -655,41 +738,47 @@ function AppTitlebar({ activePage }: { activePage: AppPage }) {
     <div className="app-titlebar relative z-50 flex h-8 shrink-0 select-none items-center border-b border-border/80 bg-sidebar/95 text-sidebar-foreground">
       <div
         data-tauri-drag-region
-        className="app-titlebar-drag flex h-full min-w-0 flex-1 items-center gap-2 pl-2"
+        className="app-titlebar-drag flex h-full min-w-0 flex-1 items-center"
       >
-        <button
-          type="button"
-          aria-label="Toggle sidebar"
-          title="Toggle sidebar"
-          className="app-titlebar-sidebar-toggle flex size-8 items-center justify-center text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          onClick={toggleSidebar}
-        >
-          <PanelLeft className="size-4" />
-        </button>
         <div
           data-tauri-drag-region
-          className="mx-1 h-4 w-px bg-sidebar-border"
-        />
-        <span
-          data-tauri-drag-region
-          className="truncate text-xs font-semibold"
+          className="flex h-full w-(--sidebar-width-icon) shrink-0 items-center justify-center border-r border-sidebar-border"
         >
-          Isekai
-        </span>
+          <button
+            type="button"
+            aria-label="Toggle sidebar"
+            title="Toggle sidebar"
+            className="app-titlebar-sidebar-toggle flex size-8 items-center justify-center text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            onClick={toggleSidebar}
+          >
+            <PanelLeft className="size-4" />
+          </button>
+        </div>
         <div
           data-tauri-drag-region
-          className="mx-1 hidden h-4 w-px bg-sidebar-border sm:block"
-        />
-        <span
-          data-tauri-drag-region
-          className="hidden truncate text-xs font-medium text-muted-foreground sm:block"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 px-4"
         >
-          {pageTitle(activePage)}
-        </span>
-        <div
-          data-tauri-drag-region
-          className="min-w-0 flex-1 self-stretch"
-        />
+          <span
+            data-tauri-drag-region
+            className="truncate text-xs font-semibold"
+          >
+            Isekai
+          </span>
+          <div
+            data-tauri-drag-region
+            className="hidden h-4 w-px bg-sidebar-border sm:block"
+          />
+          <span
+            data-tauri-drag-region
+            className="hidden truncate text-xs font-medium text-muted-foreground sm:block"
+          >
+            {pageTitle(activePage)}
+          </span>
+          <div
+            data-tauri-drag-region
+            className="min-w-0 flex-1 self-stretch"
+          />
+        </div>
       </div>
       <div className="flex h-full shrink-0 items-center">
         <TitlebarWindowButton
@@ -750,6 +839,19 @@ function TitlebarWindowButton({
   );
 }
 
+function nextOverlayMode(
+  current: AppSettings["overlay"]["mode"],
+): AppSettings["overlay"]["mode"] {
+  const modes: AppSettings["overlay"]["mode"][] = [
+    "clock",
+    "route",
+    "mini-map",
+    "clock-route",
+  ];
+  const index = modes.indexOf(current);
+  return modes[(index + 1) % modes.length];
+}
+
 function PageContent({
   activePage,
   now,
@@ -788,6 +890,7 @@ function PageContent({
       <OverviewPage
         now={now}
         events={events}
+        planner={planner}
         settings={settings}
         reminders={reminders}
         onToggleOverlay={onToggleOverlay}
@@ -798,6 +901,10 @@ function PageContent({
 
   if (activePage === "calendar") {
     return <CalendarPage selectedDate={selectedDate} planner={planner} />;
+  }
+
+  if (activePage === "routes") {
+    return <RoutesPage planner={planner} onPlannerChange={onPlannerChange} />;
   }
 
   if (activePage === "goals") {
@@ -815,6 +922,7 @@ function PageContent({
       <OverlaySettingsPage
         settings={settings}
         events={events}
+        planner={planner}
         onSettingsChange={onSettingsChange}
       />
     );
@@ -852,6 +960,7 @@ function pageTitle(page: AppPage) {
   const titles: Record<AppPage, string> = {
     overview: "Overview",
     calendar: "Calendar",
+    routes: "Routes",
     goals: "Goals",
     collection: "Collection",
     overlay: "Overlay",

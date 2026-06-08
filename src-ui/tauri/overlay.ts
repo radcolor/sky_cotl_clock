@@ -13,6 +13,8 @@ const OVERLAY_WIDTH = 360;
 const OVERLAY_HEADER_HEIGHT = 58;
 const OVERLAY_ROW_HEIGHT = 76;
 const OVERLAY_ROW_GAP = 8;
+const OVERLAY_ROUTE_CARD_HEIGHT = 150;
+const OVERLAY_ROUTE_TEXT_HEIGHT = 74;
 const OVERLAY_MARGIN = 24;
 const OVERLAY_EXIT_MS = 180;
 
@@ -22,10 +24,33 @@ function clampOverlayRows(settings: AppSettings) {
 
 function overlaySize(settings: AppSettings) {
   const rows = clampOverlayRows(settings);
-  const height =
+  const clockHeight =
     OVERLAY_HEADER_HEIGHT +
     rows * OVERLAY_ROW_HEIGHT +
     Math.max(0, rows - 1) * OVERLAY_ROW_GAP;
+  const miniMapHeight =
+    OVERLAY_HEADER_HEIGHT +
+    Math.round(settings.overlay.miniMap.size * 0.75) +
+    OVERLAY_ROUTE_TEXT_HEIGHT +
+    OVERLAY_ROW_GAP * 3;
+  const routeHeight =
+    OVERLAY_HEADER_HEIGHT + OVERLAY_ROUTE_CARD_HEIGHT + OVERLAY_ROW_GAP;
+  const clockRouteRows = 2;
+  const clockRouteHeight =
+    OVERLAY_HEADER_HEIGHT +
+    clockRouteRows * OVERLAY_ROW_HEIGHT +
+    Math.max(0, clockRouteRows - 1) * OVERLAY_ROW_GAP +
+    Math.round(settings.overlay.miniMap.size * 0.75) +
+    OVERLAY_ROUTE_TEXT_HEIGHT +
+    OVERLAY_ROW_GAP * 3;
+  const height =
+    settings.overlay.mode === "mini-map"
+      ? Math.max(miniMapHeight, routeHeight)
+      : settings.overlay.mode === "route"
+        ? routeHeight
+        : settings.overlay.mode === "clock-route"
+          ? clockRouteHeight
+          : clockHeight;
 
   return {
     width: Math.ceil(OVERLAY_WIDTH * settings.overlay.scale),
@@ -76,6 +101,7 @@ export async function positionOverlay(settings: AppSettings) {
   }
 
   const size = overlaySize(settings);
+  await overlay.setSize(new LogicalSize(size.width, size.height));
   const workArea = monitor.workArea;
   const left = workArea.position.x;
   const top = workArea.position.y;
@@ -139,6 +165,13 @@ export async function showMainWindow() {
 export async function registerAppHotkeys(
   settings: AppSettings,
   onError: (message: string) => void,
+  routeActions?: {
+    cycleOverlayMode: () => void;
+    nextRouteTarget: () => void;
+    previousRouteTarget: () => void;
+    toggleRouteTargetComplete: () => void;
+    toggleMiniMapExpanded: () => void;
+  },
 ) {
   if (!isTauriRuntime()) {
     return;
@@ -146,8 +179,22 @@ export async function registerAppHotkeys(
 
   try {
     await unregisterAll();
+    const shortcuts = Array.from(
+      new Set(
+        [
+          settings.hotkeys.toggleOverlay,
+          settings.hotkeys.showMainWindow,
+          settings.hotkeys.cycleOverlayMode,
+          settings.hotkeys.nextRouteTarget,
+          settings.hotkeys.previousRouteTarget,
+          settings.hotkeys.toggleRouteTargetComplete,
+          settings.hotkeys.toggleMiniMapExpanded,
+        ].filter(Boolean),
+      ),
+    );
+
     await register(
-      [settings.hotkeys.toggleOverlay, settings.hotkeys.showMainWindow],
+      shortcuts,
       async (event) => {
         if (event.state !== "Pressed") {
           return;
@@ -159,6 +206,26 @@ export async function registerAppHotkeys(
 
         if (event.shortcut === settings.hotkeys.showMainWindow) {
           await showMainWindow();
+        }
+
+        if (event.shortcut === settings.hotkeys.cycleOverlayMode) {
+          routeActions?.cycleOverlayMode();
+        }
+
+        if (event.shortcut === settings.hotkeys.nextRouteTarget) {
+          routeActions?.nextRouteTarget();
+        }
+
+        if (event.shortcut === settings.hotkeys.previousRouteTarget) {
+          routeActions?.previousRouteTarget();
+        }
+
+        if (event.shortcut === settings.hotkeys.toggleRouteTargetComplete) {
+          routeActions?.toggleRouteTargetComplete();
+        }
+
+        if (event.shortcut === settings.hotkeys.toggleMiniMapExpanded) {
+          routeActions?.toggleMiniMapExpanded();
         }
       },
     );

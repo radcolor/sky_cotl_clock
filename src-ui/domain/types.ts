@@ -58,6 +58,7 @@ export interface AppSettings {
   };
   overlay: {
     enabled: boolean;
+    mode: "clock" | "route" | "mini-map" | "clock-route";
     position:
       | "top-right"
       | "top-left"
@@ -69,10 +70,19 @@ export interface AppSettings {
     maxEvents: number;
     cornerRadius: number;
     clickThrough: boolean;
+    miniMap: {
+      expanded: boolean;
+      size: number;
+    };
   };
   hotkeys: {
     toggleOverlay: string;
     showMainWindow: string;
+    cycleOverlayMode: string;
+    nextRouteTarget: string;
+    previousRouteTarget: string;
+    toggleRouteTargetComplete: string;
+    toggleMiniMapExpanded: string;
   };
   events: Record<string, boolean>;
   display: {

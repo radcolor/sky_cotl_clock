@@ -2,8 +2,8 @@ import type * as React from "react";
 import {
   CalendarDays,
   CheckSquare,
-  ChevronRight,
   Eye,
+  Map,
   Monitor,
   Moon,
   Search,
@@ -13,11 +13,6 @@ import {
   Upload,
 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -42,6 +37,7 @@ export type AppPage =
   | "calendar"
   | "goals"
   | "collection"
+  | "routes"
   | "overlay"
   | "settings"
   | "updates";
@@ -72,6 +68,7 @@ const sections: Array<{
     title: "Planner",
     items: [
       { id: "calendar", title: "Calendar", icon: CalendarDays },
+      { id: "routes", title: "Routes", icon: Map },
       { id: "goals", title: "Goals", icon: CheckSquare },
       { id: "collection", title: "Collection", icon: Search },
     ],
@@ -108,7 +105,7 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarContent>
+      <SidebarContent className="group-data-[collapsible=icon]:pt-2">
         <SidebarGroup className="px-0 pt-2 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent>
             <Calendar
@@ -120,13 +117,12 @@ export function AppSidebar({
             />
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarSeparator className="mx-0" />
-        {sections.map((section, index) => (
+        <SidebarSeparator className="mx-0 group-data-[collapsible=icon]:hidden" />
+        {sections.map((section) => (
           <SidebarSection
             key={section.title}
             title={section.title}
             items={section.items}
-            defaultOpen={index < 2 || updateState.status === "available"}
             activePage={activePage}
             updateAvailable={updateState.status === "available"}
             onPageChange={onPageChange}
@@ -218,55 +214,44 @@ function nextTheme(current: AppSettings["theme"]) {
 function SidebarSection({
   title,
   items,
-  defaultOpen,
   activePage,
   updateAvailable,
   onPageChange,
 }: {
   title: string;
   items: Array<{ id: AppPage; title: string; icon: React.ElementType }>;
-  defaultOpen: boolean;
   activePage: AppPage;
   updateAvailable: boolean;
   onPageChange: (page: AppPage) => void;
 }) {
   return (
-    <SidebarGroup>
-      <Collapsible defaultOpen={defaultOpen} className="group/collapsible">
-        <SidebarGroupLabel
-          asChild
-          className="w-full text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          <CollapsibleTrigger>
-            {title}
-            <ChevronRight className="ml-auto size-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
-          </CollapsibleTrigger>
-        </SidebarGroupLabel>
-        <CollapsibleContent>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.id}>
-                  <SidebarMenuButton
-                    type="button"
-                    isActive={activePage === item.id}
-                    tooltip={item.title}
-                    onClick={() => onPageChange(item.id)}
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                    {item.id === "updates" && updateAvailable ? (
-                      <Badge className="ml-auto h-5 rounded-sm px-1.5 text-[0.65rem]">
-                        New
-                      </Badge>
-                    ) : null}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </CollapsibleContent>
-      </Collapsible>
+    <SidebarGroup className="px-3 py-1 group-data-[collapsible=icon]:px-2">
+      <SidebarGroupLabel className="h-7 px-1 text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden">
+        {title}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.id}>
+              <SidebarMenuButton
+                type="button"
+                isActive={activePage === item.id}
+                tooltip={item.title}
+                className="h-8 px-2.5 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2!"
+                onClick={() => onPageChange(item.id)}
+              >
+                <item.icon />
+                <span>{item.title}</span>
+                {item.id === "updates" && updateAvailable ? (
+                  <Badge className="ml-auto h-5 rounded-sm px-1.5 text-[0.65rem]">
+                    New
+                  </Badge>
+                ) : null}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
     </SidebarGroup>
   );
 }

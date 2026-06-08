@@ -29,6 +29,13 @@ function clampNumber(value: number | undefined, min: number, max: number, fallba
   return Math.min(max, Math.max(min, value));
 }
 
+const OVERLAY_MODES: AppSettings["overlay"]["mode"][] = [
+  "clock",
+  "route",
+  "mini-map",
+  "clock-route",
+];
+
 export const EVENT_DEFINITIONS: EventDefinition[] = [
   {
     id: "daily-reset",
@@ -108,16 +115,26 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   overlay: {
     enabled: true,
+    mode: "clock",
     position: "top-right",
     opacity: 0.92,
     scale: 1,
     maxEvents: 5,
     cornerRadius: 0,
     clickThrough: true,
+    miniMap: {
+      expanded: false,
+      size: 300,
+    },
   },
   hotkeys: {
     toggleOverlay: "F8",
     showMainWindow: "Shift+F8",
+    cycleOverlayMode: "F9",
+    nextRouteTarget: "F10",
+    previousRouteTarget: "Shift+F10",
+    toggleRouteTargetComplete: "F11",
+    toggleMiniMapExpanded: "Shift+F11",
   },
   events: Object.fromEntries(
     EVENT_DEFINITIONS.map((definition) => [
@@ -144,17 +161,39 @@ export function mergeSettings(stored: Partial<AppSettings> | null): AppSettings 
     display.localTimeZone = detectLocalTimeZone();
   }
 
-  const overlay = { ...DEFAULT_SETTINGS.overlay, ...stored.overlay };
+  const overlay = {
+    ...DEFAULT_SETTINGS.overlay,
+    ...stored.overlay,
+    miniMap: {
+      ...DEFAULT_SETTINGS.overlay.miniMap,
+      ...stored.overlay?.miniMap,
+    },
+  };
+  const overlayMode = OVERLAY_MODES.includes(overlay.mode)
+    ? overlay.mode
+    : DEFAULT_SETTINGS.overlay.mode;
 
   return {
     theme: stored.theme ?? DEFAULT_SETTINGS.theme,
     appearance: { ...DEFAULT_SETTINGS.appearance, ...stored.appearance },
     overlay: {
       ...overlay,
+      mode: overlayMode,
       opacity: clampNumber(overlay.opacity, 0.2, 1, DEFAULT_SETTINGS.overlay.opacity),
       maxEvents: Math.round(
         clampNumber(overlay.maxEvents, 3, 8, DEFAULT_SETTINGS.overlay.maxEvents),
       ),
+      miniMap: {
+        ...overlay.miniMap,
+        size: Math.round(
+          clampNumber(
+            overlay.miniMap.size,
+            220,
+            420,
+            DEFAULT_SETTINGS.overlay.miniMap.size,
+          ),
+        ),
+      },
     },
     hotkeys: { ...DEFAULT_SETTINGS.hotkeys, ...stored.hotkeys },
     events: { ...DEFAULT_SETTINGS.events, ...stored.events },

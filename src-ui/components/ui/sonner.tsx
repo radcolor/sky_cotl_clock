@@ -6,14 +6,16 @@ function Toaster({ ...props }: ToasterProps) {
       richColors
       closeButton
       position="top-right"
+      className="toaster group font-sans"
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:bg-popover group-[.toaster]:text-popover-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
-          description: "group-[.toast]:text-muted-foreground",
+            "group toast border-border bg-popover font-sans text-popover-foreground shadow-lg",
+          title: "font-sans text-popover-foreground",
+          description: "font-sans text-muted-foreground",
           actionButton:
-            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
-          cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+            "bg-primary font-sans text-primary-foreground",
+          cancelButton: "bg-muted font-sans text-muted-foreground",
         },
       }}
       {...props}

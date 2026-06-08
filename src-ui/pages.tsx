@@ -43,6 +43,9 @@ import { EVENT_DEFINITIONS } from "@/domain/settings";
 import { ACCENT_OPTIONS, FONT_OPTIONS } from "@/domain/theme";
 import {
   createGoal,
+  resetAllRouteProgress,
+  resetCurrentAreaRoute,
+  setActiveRoute,
   type PlannerGoal,
   type PlannerState,
 } from "@/domain/planner";
@@ -52,7 +55,13 @@ import {
   skyNow,
 } from "@/domain/skyTime";
 import type { AppSettings, EventInstance } from "@/domain/types";
-import type { SkyCalendarEntry, SkyItemSummary } from "@/data/skygame";
+import type {
+  SkyAreaRoute,
+  SkyCalendarEntry,
+  SkyItemSummary,
+  SkyRouteTarget,
+} from "@/data/skygame";
+import { skyDataIndex } from "@/data/skygame";
 import { formatBytes, type AppUpdateState } from "@/tauri/updater";
 import { isTauriRuntime } from "@/tauri/overlay";
 
@@ -77,6 +86,33 @@ const OVERLAY_POSITION_OPTIONS: Array<{
   { value: "bottom-right", label: "Bottom right" },
   { value: "top-left", label: "Top left" },
   { value: "bottom-left", label: "Bottom left" },
+];
+
+const OVERLAY_MODE_OPTIONS: Array<{
+  value: AppSettings["overlay"]["mode"];
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "clock",
+    label: "Clock",
+    description: "Timer rows only.",
+  },
+  {
+    value: "route",
+    label: "Route",
+    description: "Current route target as text.",
+  },
+  {
+    value: "mini-map",
+    label: "Mini map",
+    description: "Map panel with current route pins.",
+  },
+  {
+    value: "clock-route",
+    label: "Clock + route",
+    description: "Clock rows with mini map and route text.",
+  },
 ];
 
 function getTimeZoneOptions(selectedTimeZone: string) {
@@ -161,6 +197,7 @@ export function PageHeader({
 export function OverviewPage({
   now,
   events,
+  planner,
   settings,
   reminders,
   onToggleOverlay,
@@ -168,6 +205,7 @@ export function OverviewPage({
 }: {
   now: Date;
   events: EventInstance[];
+  planner: PlannerState;
   settings: AppSettings;
   reminders: Record<string, boolean>;
   onToggleOverlay: () => void;
@@ -284,7 +322,7 @@ export function OverviewPage({
               )}
             </CardContent>
           </Card>
-          <OverlayPreview events={events} settings={settings} />
+          <OverlayPreview events={events} planner={planner} settings={settings} />
         </div>
       </div>
     </>
@@ -377,6 +415,222 @@ export function CalendarPage({
             ))}
           </CardContent>
         </Card>
+      </div>
+    </>
+  );
+}
+
+export function RoutesPage({
+  planner,
+  onPlannerChange,
+}: {
+  planner: PlannerState;
+  onPlannerChange: (planner: PlannerState) => void;
+}) {
+  const skyData = useSkyData();
+  const realms = useMemo(() => skyData?.skyDataIndex.getRealms() ?? [], [skyData]);
+  const selectedRealmGuid =
+    planner.activeRoute.realmGuid ?? realms.find((realm) => realm.areaGuids.length > 0)?.guid;
+  const areas = useMemo(
+    () =>
+      skyData && selectedRealmGuid
+        ? skyData.skyDataIndex.getAreasForRealm(selectedRealmGuid)
+        : [],
+    [selectedRealmGuid, skyData],
+  );
+  const selectedAreaGuid =
+    planner.activeRoute.areaGuid ?? areas.find((area) => area.spiritGuids.length + area.wingedLightGuids.length > 0)?.guid;
+  const areaRoute = selectedAreaGuid && skyData
+    ? skyData.skyDataIndex.getAreaRoute(selectedAreaGuid)
+    : null;
+  const routeTargets = useMemo(
+    () =>
+      selectedAreaGuid && skyData
+        ? skyData.skyDataIndex.getRouteTargets(
+            selectedAreaGuid,
+            planner.activeRoute.filters,
+          )
+        : [],
+    [planner.activeRoute.filters, selectedAreaGuid, skyData],
+  );
+  const activeTarget =
+    skyData?.skyDataIndex.getActiveRouteTarget(
+      planner.activeRoute,
+      planner.routeProgress,
+    )?.target ?? routeTargets[0] ?? null;
+  const completedCount = routeTargets.filter(
+    (target) => planner.routeProgress.completedTargets[target.guid],
+  ).length;
+  const connections =
+    skyData && areaRoute
+      ? areaRoute.connectionGuids
+          .map((guid) => skyData.skyDataIndex.getArea(guid))
+          .filter(Boolean)
+      : [];
+
+  function updateRoute(input: {
+    realmGuid?: string;
+    areaGuid?: string;
+    spirits?: boolean;
+    wingedLights?: boolean;
+  }) {
+    const nextRealmGuid = input.realmGuid ?? selectedRealmGuid;
+    const nextAreas =
+      skyData && nextRealmGuid ? skyData.skyDataIndex.getAreasForRealm(nextRealmGuid) : [];
+    const nextAreaGuid =
+      input.areaGuid ??
+      (input.realmGuid
+        ? nextAreas.find((area) => area.spiritGuids.length + area.wingedLightGuids.length > 0)?.guid
+        : selectedAreaGuid);
+
+    onPlannerChange(
+      setActiveRoute(planner, {
+        realmGuid: nextRealmGuid,
+        areaGuid: nextAreaGuid,
+        filters: {
+          spirits: input.spirits ?? planner.activeRoute.filters.spirits,
+          wingedLights:
+            input.wingedLights ?? planner.activeRoute.filters.wingedLights,
+        },
+      }),
+    );
+  }
+
+  function resetArea() {
+    onPlannerChange(
+      resetCurrentAreaRoute(
+        planner,
+        routeTargets.map((target) => target.guid),
+      ),
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Routes"
+        description="Choose an area route and send spirit or winged light targets to the overlay."
+      />
+      <div className="grid gap-4 p-5 xl:grid-cols-[360px_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Route Builder</CardTitle>
+            <CardDescription>Manual in-game reference, not live tracking.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="route-realm">Realm</Label>
+              <Select
+                value={selectedRealmGuid}
+                onValueChange={(realmGuid) => updateRoute({ realmGuid })}
+                disabled={!skyData}
+              >
+                <SelectTrigger id="route-realm" className="w-full">
+                  <SelectValue placeholder="Choose realm" />
+                </SelectTrigger>
+                <SelectContent>
+                  {realms.map((realm) => (
+                    <SelectItem key={realm.guid} value={realm.guid}>
+                      {realm.shortName ?? realm.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="route-area">Area</Label>
+              <Select
+                value={selectedAreaGuid}
+                onValueChange={(areaGuid) => updateRoute({ areaGuid })}
+                disabled={!skyData || areas.length === 0}
+              >
+                <SelectTrigger id="route-area" className="w-full">
+                  <SelectValue placeholder="Choose area" />
+                </SelectTrigger>
+                <SelectContent>
+                  {areas.map((area) => {
+                    const route = skyData?.skyDataIndex.getAreaRoute(area.guid);
+                    return (
+                      <SelectItem key={area.guid} value={area.guid}>
+                        {area.name} ({route?.counts.total ?? 0})
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <Separator />
+            <SettingSwitch
+              label="Spirits"
+              checked={planner.activeRoute.filters.spirits}
+              onCheckedChange={(spirits) => updateRoute({ spirits })}
+            />
+            <SettingSwitch
+              label="Winged lights"
+              checked={planner.activeRoute.filters.wingedLights}
+              onCheckedChange={(wingedLights) => updateRoute({ wingedLights })}
+            />
+            <Button
+              type="button"
+              disabled={!selectedRealmGuid || !selectedAreaGuid}
+              onClick={() =>
+                updateRoute({
+                  realmGuid: selectedRealmGuid,
+                  areaGuid: selectedAreaGuid,
+                })
+              }
+            >
+              <Upload className="size-4" />
+              Send to overlay
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="secondary" onClick={resetArea}>
+                Reset area
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => onPlannerChange(resetAllRouteProgress(planner))}
+              >
+                Reset all
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+        <div className="grid gap-4">
+          <AreaRouteCard
+            areaRoute={areaRoute}
+            activeTarget={activeTarget}
+            completedCount={completedCount}
+            totalCount={routeTargets.length}
+            connections={connections as Array<{ guid: string; name: string }>}
+          />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Route Targets</CardTitle>
+              <CardDescription>
+                {completedCount} of {routeTargets.length} complete in this area.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {routeTargets.length > 0 ? (
+                routeTargets.map((target, index) => (
+                  <RouteTargetRow
+                    key={target.guid}
+                    target={target}
+                    active={target.guid === activeTarget?.guid}
+                    complete={planner.routeProgress.completedTargets[target.guid] === true}
+                    index={index}
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {skyData ? "No route targets match these filters." : "Loading route data..."}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </>
   );
@@ -523,12 +777,22 @@ export function CollectionPage({
 export function OverlaySettingsPage({
   settings,
   events,
+  planner,
   onSettingsChange,
 }: {
   settings: AppSettings;
   events: EventInstance[];
+  planner: PlannerState;
   onSettingsChange: (settings: AppSettings) => void;
 }) {
+  const modeLabels = new Map(
+    OVERLAY_MODE_OPTIONS.map((mode) => [mode.value, mode.label] as const),
+  );
+  const modeValues = OVERLAY_MODE_OPTIONS.map((mode) => mode.value);
+  const selectedMode = modeValues.includes(settings.overlay.mode)
+    ? settings.overlay.mode
+    : "clock";
+
   return (
     <>
       <PageHeader
@@ -539,9 +803,15 @@ export function OverlaySettingsPage({
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Behavior</CardTitle>
-            <CardDescription>Changes sync to the overlay window.</CardDescription>
+            <CardDescription>
+              Choose the overlay layout and how it appears in-game.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
+            <div className="rounded-md border border-border/70 bg-muted/25 p-3 text-sm text-muted-foreground">
+              Clock mode uses the selected clock row count. Clock + route shows
+              up to 2 clock rows with the mini map and route text.
+            </div>
             <SettingSwitch
               label="Enable overlay"
               checked={settings.overlay.enabled}
@@ -549,6 +819,32 @@ export function OverlaySettingsPage({
                 onSettingsChange({ ...settings, overlay: { ...settings.overlay, enabled } })
               }
             />
+            <div className="grid gap-2">
+              <Label htmlFor="overlay-mode">Layout</Label>
+              <Select
+                value={selectedMode}
+                onValueChange={(mode: AppSettings["overlay"]["mode"]) =>
+                  onSettingsChange({
+                    ...settings,
+                    overlay: { ...settings.overlay, mode },
+                  })
+                }
+              >
+                <SelectTrigger id="overlay-mode" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OVERLAY_MODE_OPTIONS.map((mode) => (
+                    <SelectItem key={mode.value} value={mode.value}>
+                      {modeLabels.get(mode.value) ?? mode.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The mode-cycle hotkey rotates through these same layouts.
+              </p>
+            </div>
             <SettingSwitch
               label="Click-through"
               checked={settings.overlay.clickThrough}
@@ -602,7 +898,7 @@ export function OverlaySettingsPage({
               }
             />
             <SliderSetting
-              label="Rows"
+              label="Clock rows"
               value={settings.overlay.maxEvents}
               min={3}
               max={8}
@@ -626,9 +922,27 @@ export function OverlaySettingsPage({
                 })
               }
             />
+            <Separator />
+            <SliderSetting
+              label="Mini map size"
+              value={settings.overlay.miniMap.size}
+              min={220}
+              max={420}
+              step={10}
+              display={`${settings.overlay.miniMap.size}px`}
+              onValueChange={(size) =>
+                onSettingsChange({
+                  ...settings,
+                  overlay: {
+                    ...settings.overlay,
+                    miniMap: { ...settings.overlay.miniMap, size },
+                  },
+                })
+              }
+            />
           </CardContent>
         </Card>
-        <OverlayPreview events={events} settings={settings} />
+        <OverlayPreview events={events} planner={planner} settings={settings} />
       </div>
     </>
   );
@@ -770,6 +1084,90 @@ export function SettingsPage({
                 }
               />
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="cycle-mode-hotkey">Cycle overlay mode</Label>
+              <Input
+                id="cycle-mode-hotkey"
+                value={settings.hotkeys.cycleOverlayMode}
+                onChange={(event) =>
+                  onSettingsChange({
+                    ...settings,
+                    hotkeys: {
+                      ...settings.hotkeys,
+                      cycleOverlayMode: event.currentTarget.value,
+                    },
+                  })
+                }
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="next-route-hotkey">Next route target</Label>
+                <Input
+                  id="next-route-hotkey"
+                  value={settings.hotkeys.nextRouteTarget}
+                  onChange={(event) =>
+                    onSettingsChange({
+                      ...settings,
+                      hotkeys: {
+                        ...settings.hotkeys,
+                        nextRouteTarget: event.currentTarget.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="previous-route-hotkey">Previous route target</Label>
+                <Input
+                  id="previous-route-hotkey"
+                  value={settings.hotkeys.previousRouteTarget}
+                  onChange={(event) =>
+                    onSettingsChange({
+                      ...settings,
+                      hotkeys: {
+                        ...settings.hotkeys,
+                        previousRouteTarget: event.currentTarget.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="complete-route-hotkey">Toggle target complete</Label>
+                <Input
+                  id="complete-route-hotkey"
+                  value={settings.hotkeys.toggleRouteTargetComplete}
+                  onChange={(event) =>
+                    onSettingsChange({
+                      ...settings,
+                      hotkeys: {
+                        ...settings.hotkeys,
+                        toggleRouteTargetComplete: event.currentTarget.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="minimap-hotkey">Expand mini map</Label>
+                <Input
+                  id="minimap-hotkey"
+                  value={settings.hotkeys.toggleMiniMapExpanded}
+                  onChange={(event) =>
+                    onSettingsChange({
+                      ...settings,
+                      hotkeys: {
+                        ...settings.hotkeys,
+                        toggleMiniMapExpanded: event.currentTarget.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
             {hotkeyError ? (
               <div className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                 {hotkeyError}
@@ -816,6 +1214,14 @@ export function SettingsPage({
               </Select>
             </div>
           </CardContent>
+        </Card>
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">About</CardTitle>
+            <CardDescription>
+              Made with ❤️ for my vet who adopted a moth.
+            </CardDescription>
+          </CardHeader>
         </Card>
       </div>
     </>
@@ -1005,10 +1411,12 @@ export function UpdatesPage({
 export function Overlay({
   events,
   settings,
+  planner,
   animated = false,
 }: {
   events: EventInstance[];
   settings: AppSettings;
+  planner?: PlannerState;
   animated?: boolean;
 }) {
   const [visible, setVisible] = useState(!animated);
@@ -1016,14 +1424,27 @@ export function Overlay({
     () => events.slice(0, settings.overlay.maxEvents),
     [events, settings.overlay.maxEvents],
   );
-  const transformOrigin = settings.overlay.position.includes("bottom")
-    ? settings.overlay.position.includes("left")
-      ? "bottom left"
-      : "bottom right"
-    : settings.overlay.position.includes("left")
-      ? "top left"
-      : "top right";
   const rowRadius = Math.max(0, Math.min(settings.overlay.cornerRadius - 6, 18));
+  const routeState = planner
+    ? skyDataIndex.getActiveRouteTarget(
+        planner.activeRoute,
+        planner.routeProgress,
+      )
+    : null;
+  const activeArea = planner?.activeRoute.areaGuid
+    ? skyDataIndex.getAreaRoute(planner.activeRoute.areaGuid)
+    : null;
+  const miniMapPins = (planner?.activeRoute.areaGuid
+    ? skyDataIndex.getMiniMapPins(
+        planner.activeRoute.areaGuid,
+        planner.activeRoute.filters,
+      )
+    : []
+  );
+  const overlayMode =
+    settings.overlay.mode === "mini-map" && (!activeArea?.imageUrl || miniMapPins.length === 0)
+      ? "route"
+      : settings.overlay.mode;
 
   useEffect(() => {
     if (!animated) {
@@ -1054,40 +1475,339 @@ export function Overlay({
     <section
       data-visible={visible}
       data-animated={animated}
-      className="overlay-shell flex max-h-svh w-full max-w-[360px] flex-col overflow-hidden border border-white/10 p-3 text-foreground shadow-lg"
+      className="overlay-shell flex max-h-svh w-full max-w-[360px] flex-col overflow-hidden border border-white/10 p-3 text-foreground"
       style={{
         background: `color-mix(in oklch, var(--background) ${Math.round(
           settings.overlay.opacity * 100,
         )}%, transparent)`,
         borderRadius: `${settings.overlay.cornerRadius}px`,
-        transform: `scale(${settings.overlay.scale}) translateY(${visible ? 0 : 8}px)`,
-        transformOrigin,
+        transform: `translateY(${visible ? 0 : 8}px)`,
+        zoom: settings.overlay.scale,
       }}
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Clock className="size-4 text-primary" />
-            <span className="text-sm font-semibold">Sky Clock</span>
+        {overlayMode === "route" ? (
+          <RouteOverlayContent
+            routeState={routeState}
+            activeArea={activeArea}
+            nextEvent={visibleEvents[0]}
+            settings={settings}
+            rowRadius={rowRadius}
+          />
+        ) : overlayMode === "clock-route" ? (
+          <ClockRouteOverlayContent
+            routeState={routeState}
+            activeArea={activeArea}
+            pins={miniMapPins}
+            planner={planner}
+            events={visibleEvents}
+            settings={settings}
+            rowRadius={rowRadius}
+          />
+        ) : overlayMode === "mini-map" ? (
+          <MiniMapOverlayContent
+            routeState={routeState}
+            activeArea={activeArea}
+            pins={miniMapPins}
+            planner={planner}
+            settings={settings}
+            rowRadius={rowRadius}
+          />
+        ) : (
+          <ClockOverlayContent
+            events={visibleEvents}
+            settings={settings}
+            rowRadius={rowRadius}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function OverlayHeader({
+  title,
+  shortcut,
+}: {
+  title: string;
+  shortcut: string;
+}) {
+  return (
+    <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <Clock className="size-4 text-primary" />
+        <span className="text-sm font-semibold">{title}</span>
+      </div>
+      <Badge variant="secondary" className="text-[10px]">
+        {shortcut}
+      </Badge>
+    </div>
+  );
+}
+
+function ClockOverlayContent({
+  events,
+  settings,
+  rowRadius,
+}: {
+  events: EventInstance[];
+  settings: AppSettings;
+  rowRadius: number;
+}) {
+  return (
+    <>
+      <OverlayHeader title="Sky Clock" shortcut={settings.hotkeys.toggleOverlay} />
+      <div className="theme-scrollbar grid min-h-0 flex-1 gap-2 overflow-y-auto">
+        {events.map((event) => (
+          <div
+            key={`${event.definitionId}-${event.startsAtUtc}`}
+            className="overlay-event-row grid gap-1 overflow-hidden border border-border/70 bg-card/80 p-2"
+            style={{ borderRadius: `${rowRadius}px` }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium leading-5">{event.title}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {[event.location, event.phaseLabel].filter(Boolean).join(" - ")}
+                </p>
+              </div>
+              <StatusBadge status={event.status} />
+            </div>
+            <div className="flex items-end justify-between gap-2">
+              <p className="text-lg font-semibold tabular-nums leading-none">
+                {formatDuration(event.countdownMs)}
+              </p>
+              <p className="text-right text-[11px] text-muted-foreground">
+                {settings.display.showLocalTime ? event.localTimeLabel : null}
+                {settings.display.showSkyTime ? ` / ${event.skyTimeLabel}` : null}
+              </p>
+            </div>
           </div>
-          <Badge variant="secondary" className="text-[10px]">
-            {settings.hotkeys.toggleOverlay}
-          </Badge>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function RouteOverlayContent({
+  routeState,
+  activeArea,
+  nextEvent,
+  settings,
+  rowRadius,
+  showHeader = true,
+}: {
+  routeState: ReturnType<typeof skyDataIndex.getActiveRouteTarget>;
+  activeArea: SkyAreaRoute | null;
+  nextEvent?: EventInstance;
+  settings: AppSettings;
+  rowRadius: number;
+  showHeader?: boolean;
+}) {
+  const target = routeState?.target;
+
+  return (
+    <>
+      {showHeader ? (
+        <OverlayHeader title="Route" shortcut={settings.hotkeys.cycleOverlayMode} />
+      ) : null}
+      <div className="grid gap-2">
+        <div
+          className="grid gap-2 border border-border/70 bg-card/80 p-3"
+          style={{ borderRadius: `${rowRadius}px` }}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">
+                {activeArea?.name ?? "No route selected"}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {activeArea?.realmName ?? "Choose a route in the main app"}
+              </p>
+            </div>
+            {target ? (
+              <Badge variant="outline" className="rounded-sm">
+                {target.kind === "winged-light" ? "WL" : "Spirit"}
+              </Badge>
+            ) : null}
+          </div>
+          {target ? (
+            <>
+              <div className="min-w-0">
+                <p className="truncate text-lg font-semibold leading-6">
+                  {target.name}
+                </p>
+                <p className="line-clamp-2 text-xs leading-4 text-muted-foreground">
+                  {target.description}
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>
+                  {routeState.completedCount} / {routeState.total} complete
+                </span>
+                <span>
+                  {routeState.targetIndex + 1} / {routeState.total}
+                </span>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Start a spirit or winged light route from the Routes page.
+            </p>
+          )}
         </div>
-        <div className="theme-scrollbar grid min-h-0 flex-1 gap-2 overflow-y-auto">
-          {visibleEvents.map((event) => (
+        {nextEvent ? (
+          <div className="flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-muted/30 px-2 py-1.5 text-xs">
+            <span className="truncate">{nextEvent.title}</span>
+            <span className="font-semibold tabular-nums">
+              {formatDuration(nextEvent.countdownMs)}
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function MiniMapOverlayContent({
+  routeState,
+  activeArea,
+  pins,
+  planner,
+  settings,
+  rowRadius,
+}: {
+  routeState: ReturnType<typeof skyDataIndex.getActiveRouteTarget>;
+  activeArea: SkyAreaRoute | null;
+  pins: ReturnType<typeof skyDataIndex.getMiniMapPins>;
+  planner?: PlannerState;
+  settings: AppSettings;
+  rowRadius: number;
+}) {
+  if (!activeArea?.imageUrl || pins.length === 0) {
+    return (
+      <RouteOverlayContent
+        routeState={routeState}
+        activeArea={activeArea}
+        settings={settings}
+        rowRadius={rowRadius}
+      />
+    );
+  }
+
+  const expanded = planner?.activeRoute.miniMapExpanded ?? settings.overlay.miniMap.expanded;
+  const size = expanded ? settings.overlay.miniMap.size : 220;
+  const target = routeState?.target;
+
+  return (
+    <>
+      <OverlayHeader title="Mini Map" shortcut={settings.hotkeys.toggleMiniMapExpanded} />
+      <div className="grid gap-2">
+        <div
+          className="relative overflow-hidden border border-border/70 bg-card"
+          style={{
+            borderRadius: `${rowRadius}px`,
+            width: `${size}px`,
+            maxWidth: "100%",
+          }}
+        >
+          <img
+            src={activeArea.imageUrl}
+            alt=""
+            className="aspect-[4/3] w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/10" />
+          {pins.map((pin) => {
+            const complete =
+              planner?.routeProgress.completedTargets[pin.targetGuid] === true;
+            const active = pin.targetGuid === routeState?.target.guid;
+            return (
+              <span
+                key={pin.guid}
+                title={pin.label}
+                className={cn(
+                  "absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white shadow-[0_0_0_2px_rgba(0,0,0,0.35)]",
+                  pin.kind === "winged-light" ? "bg-amber-300" : "bg-cyan-300",
+                  complete && "opacity-35",
+                  active && "size-4 bg-primary ring-2 ring-white",
+                )}
+                style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+              />
+            );
+          })}
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/95 to-transparent p-2">
+            <p className="truncate text-sm font-semibold">{activeArea.name}</p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {routeState?.target.name ?? "No target selected"}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-muted/30 px-2 py-1.5 text-xs">
+          <span>
+            {routeState?.completedCount ?? 0} / {routeState?.total ?? 0} complete
+          </span>
+          <span>{expanded ? "expanded" : "compact"}</span>
+        </div>
+        {target ? (
+          <div
+            className="grid gap-1 border border-border/60 bg-card/80 p-2"
+            style={{ borderRadius: `${rowRadius}px` }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-sm font-semibold">{target.name}</p>
+              <Badge variant="outline" className="rounded-sm text-[10px]">
+                {routeState.targetIndex + 1}/{routeState.total}
+              </Badge>
+            </div>
+            <p className="line-clamp-2 text-xs leading-4 text-muted-foreground">
+              {target.description}
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+function ClockRouteOverlayContent({
+  routeState,
+  activeArea,
+  pins,
+  planner,
+  events,
+  settings,
+  rowRadius,
+}: {
+  routeState: ReturnType<typeof skyDataIndex.getActiveRouteTarget>;
+  activeArea: SkyAreaRoute | null;
+  pins: ReturnType<typeof skyDataIndex.getMiniMapPins>;
+  planner?: PlannerState;
+  events: EventInstance[];
+  settings: AppSettings;
+  rowRadius: number;
+}) {
+  const canShowMiniMap =
+    Boolean(activeArea?.imageUrl) &&
+    pins.length > 0;
+  const clockLimit = canShowMiniMap ? 2 : 3;
+  const clockEvents = events.slice(
+    0,
+    Math.min(settings.overlay.maxEvents, clockLimit),
+  );
+
+  return (
+    <>
+      <OverlayHeader title="Clock + Route" shortcut={settings.hotkeys.cycleOverlayMode} />
+      {clockEvents.length > 0 ? (
+        <div className="mb-2 grid gap-1.5">
+          {clockEvents.map((event) => (
             <div
               key={`${event.definitionId}-${event.startsAtUtc}`}
-              className="overlay-event-row grid gap-1 overflow-hidden border border-border/70 bg-card/80 p-2"
+              className="grid gap-1 border border-border/70 bg-card/80 p-2"
               style={{ borderRadius: `${rowRadius}px` }}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium leading-5">{event.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {[event.location, event.phaseLabel].filter(Boolean).join(" - ")}
-                  </p>
-                </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-sm font-medium">{event.title}</p>
                 <StatusBadge status={event.status} />
               </div>
               <div className="flex items-end justify-between gap-2">
@@ -1102,8 +1822,26 @@ export function Overlay({
             </div>
           ))}
         </div>
-      </div>
-    </section>
+      ) : null}
+      {canShowMiniMap ? (
+        <MiniMapOverlayContent
+          routeState={routeState}
+          activeArea={activeArea}
+          pins={pins}
+          planner={planner}
+          settings={settings}
+          rowRadius={rowRadius}
+        />
+      ) : (
+        <RouteOverlayContent
+          routeState={routeState}
+          activeArea={activeArea}
+          settings={settings}
+          rowRadius={rowRadius}
+          showHeader={false}
+        />
+      )}
+    </>
   );
 }
 
@@ -1241,9 +1979,11 @@ function MarkdownChangelog({ content }: { content: string }) {
 
 function OverlayPreview({
   events,
+  planner,
   settings,
 }: {
   events: EventInstance[];
+  planner: PlannerState;
   settings: AppSettings;
 }) {
   return (
@@ -1256,7 +1996,7 @@ function OverlayPreview({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Overlay events={events} settings={settings} />
+        <Overlay events={events} planner={planner} settings={settings} />
       </CardContent>
     </Card>
   );
@@ -1403,6 +2143,127 @@ function CalendarEntryRow({ entry }: { entry: SkyCalendarEntry }) {
       <p className="text-xs text-muted-foreground">
         {entry.date} to {entry.endDate}
       </p>
+    </div>
+  );
+}
+
+function AreaRouteCard({
+  areaRoute,
+  activeTarget,
+  completedCount,
+  totalCount,
+  connections,
+}: {
+  areaRoute: SkyAreaRoute | null;
+  activeTarget: SkyRouteTarget | null;
+  completedCount: number;
+  totalCount: number;
+  connections: Array<{ guid: string; name: string }>;
+}) {
+  if (!areaRoute) {
+    return (
+      <Card>
+        <CardContent className="p-4 text-sm text-muted-foreground">
+          Choose a realm and area to preview route targets.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      {areaRoute.imageUrl ? (
+        <div className="relative aspect-[16/7] overflow-hidden bg-muted">
+          <img
+            src={areaRoute.imageUrl}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/95 to-transparent p-4">
+            <p className="text-lg font-semibold">{areaRoute.name}</p>
+            <p className="text-sm text-muted-foreground">{areaRoute.realmName}</p>
+          </div>
+        </div>
+      ) : null}
+      <CardHeader>
+        <CardTitle className="text-base">{areaRoute.name}</CardTitle>
+        <CardDescription>
+          {completedCount} of {totalCount} route targets complete.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        <div className="grid gap-2 md:grid-cols-3">
+          <InfoRow label="Spirits" value={String(areaRoute.counts.spirits)} />
+          <InfoRow
+            label="Winged lights"
+            value={String(areaRoute.counts.wingedLights)}
+          />
+          <InfoRow label="Total" value={String(areaRoute.counts.total)} />
+        </div>
+        {activeTarget ? (
+          <div className="rounded-md border border-primary/25 bg-primary/10 p-3">
+            <p className="text-sm font-semibold">Active target</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {activeTarget.name} - {activeTarget.description}
+            </p>
+          </div>
+        ) : null}
+        {connections.length > 0 ? (
+          <div className="grid gap-1">
+            <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground/70">
+              Connected areas
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {connections.slice(0, 12).map((area) => (
+                <Badge key={area.guid} variant="secondary" className="rounded-sm">
+                  {area.name}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RouteTargetRow({
+  target,
+  active,
+  complete,
+  index,
+}: {
+  target: SkyRouteTarget;
+  active: boolean;
+  complete: boolean;
+  index: number;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid gap-2 rounded-md border border-border bg-card/70 p-3 transition-colors md:grid-cols-[auto_1fr_auto] md:items-center",
+        active && "border-primary/35 bg-primary/10",
+        complete && "opacity-65",
+      )}
+    >
+      <Badge variant={target.kind === "winged-light" ? "default" : "secondary"}>
+        {index + 1}
+      </Badge>
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-medium">{target.name}</p>
+          <Badge variant="outline" className="rounded-sm">
+            {target.kind === "winged-light" ? "Winged Light" : "Spirit"}
+          </Badge>
+          {active ? <Badge className="rounded-sm">Active</Badge> : null}
+        </div>
+        <p className="truncate text-xs text-muted-foreground">
+          {[target.areaName, target.description].filter(Boolean).join(" - ")}
+        </p>
+      </div>
+      <Badge variant={complete ? "default" : "secondary"} className="rounded-sm">
+        {complete ? "Done" : "Open"}
+      </Badge>
     </div>
   );
 }
