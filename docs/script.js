@@ -1,14 +1,17 @@
 const repo = "radcolor/sky_cotl_clock";
 const releasesUrl = `https://github.com/${repo}/releases/latest`;
 const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
-const currentVersion = "0.1.3";
+const currentVersion = "0.1.4";
 
 const downloadButton = document.querySelector("#downloadButton");
 const releaseStatus = document.querySelector("#releaseStatus");
 const packageVersion = document.querySelector("#packageVersion");
 const cursorLight = document.querySelector(".cursor-light");
 const navLinks = [...document.querySelectorAll("nav a")];
-const sections = navLinks
+const sectionNavLinks = navLinks.filter((link) =>
+  link.getAttribute("href")?.startsWith("#"),
+);
+const sections = sectionNavLinks
   .map((link) => document.querySelector(link.getAttribute("href")))
   .filter(Boolean);
 
@@ -64,7 +67,7 @@ function setActiveNav() {
     }
   });
 
-  navLinks.forEach((link) => {
+  sectionNavLinks.forEach((link) => {
     const isActive = current && link.getAttribute("href") === `#${current.id}`;
     link.classList.toggle("active", Boolean(isActive));
   });

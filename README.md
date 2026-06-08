@@ -17,6 +17,11 @@ The app is Windows-first and includes:
 
 [View MP4 demo](assets/export-1780652649327.mp4)
 
+## Support
+
+For questions, feedback, and release support, join the Isekai Discord:
+https://discord.gg/a7vGCk7XQa
+
 ## Development
 
 ```bash
