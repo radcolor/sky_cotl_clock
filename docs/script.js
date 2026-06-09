@@ -6,6 +6,9 @@ const currentVersion = "0.1.4";
 const downloadButton = document.querySelector("#downloadButton");
 const packageVersion = document.querySelector("#packageVersion");
 const cursorLight = document.querySelector(".cursor-light");
+const previewVideo = document.querySelector(".app-window video");
+const themeToggle = document.querySelector(".theme-toggle");
+const themeToggleText = document.querySelector(".theme-toggle-text");
 const navLinks = [...document.querySelectorAll("nav a")];
 const sectionNavLinks = navLinks.filter((link) =>
   link.getAttribute("href")?.startsWith("#"),
@@ -15,6 +18,30 @@ const sections = sectionNavLinks
   .filter(Boolean);
 
 packageVersion.textContent = currentVersion;
+
+function getCurrentTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function setTheme(theme, persist = true) {
+  const nextTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = nextTheme;
+
+  if (persist) {
+    try {
+      localStorage.setItem("isekai-docs-theme", nextTheme);
+    } catch {}
+  }
+
+  if (!themeToggle || !themeToggleText) {
+    return;
+  }
+
+  const isDark = nextTheme === "dark";
+  themeToggle.setAttribute("aria-pressed", String(isDark));
+  themeToggle.setAttribute("aria-label", `Switch to ${isDark ? "light" : "dark"} theme`);
+  themeToggleText.textContent = isDark ? "Light" : "Dark";
+}
 
 function chooseDownloadAsset(assets) {
   const preferredExtensions = [".msi", ".exe", ".zip"];
@@ -52,6 +79,20 @@ async function hydrateLatestRelease() {
     downloadButton.href = releasesUrl;
     downloadButton.querySelector("span").textContent = "Download latest version";
   }
+}
+
+function startPreviewVideo() {
+  if (!previewVideo) {
+    return;
+  }
+
+  previewVideo.muted = true;
+  previewVideo.loop = true;
+  previewVideo.play().catch(() => {});
+  previewVideo.addEventListener("ended", () => {
+    previewVideo.currentTime = 0;
+    previewVideo.play().catch(() => {});
+  });
 }
 
 function setActiveNav() {
@@ -99,6 +140,10 @@ document.querySelectorAll("details").forEach((details) => {
   });
 });
 
+themeToggle?.addEventListener("click", () => {
+  setTheme(getCurrentTheme() === "dark" ? "light" : "dark");
+});
+
 document.addEventListener("pointermove", (event) => {
   cursorLight.style.opacity = "1";
   cursorLight.style.transform = `translate(${event.clientX - 180}px, ${event.clientY - 180}px)`;
@@ -110,5 +155,7 @@ document.addEventListener("pointerleave", () => {
 
 document.addEventListener("scroll", setActiveNav, { passive: true });
 
+setTheme(getCurrentTheme(), false);
 hydrateLatestRelease();
+startPreviewVideo();
 setActiveNav();

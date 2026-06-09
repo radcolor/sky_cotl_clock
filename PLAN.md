@@ -10,7 +10,12 @@ Sky Planner, not clone it.
 - [x] Treat the overlay as a compact execution aid, not a full planner window.
 - [x] Use SkyGame-Data as the canonical content source.
 - [x] Build route and mini map features around manual player-selected routes.
-- [ ] Expand deeper planner features after the data foundation is stable.
+- [ ] Make Isekai a "play alongside the game" companion, not Sky Planner in a
+  desktop shell.
+- [ ] Prioritize session-first flows: what the player is doing now, where to go
+  next, what to mark complete, and what is time-sensitive.
+- [ ] Keep deep database browsing secondary to in-game execution modes.
+- [ ] Expand deeper planner features only when they support a live play session.
 
 ## Safety Boundary
 
@@ -131,8 +136,56 @@ features are covered by automated checks where practical.
 ## Future Data Features
 
 - [ ] Add map shrine route targets.
-- [ ] Add candle route sessions.
 - [ ] Add spirit tree cost planning.
-- [ ] Add traveling and returning spirit visit planning.
 - [ ] Add shop, IAP, and item source detail views.
 - [ ] Add constellation and realm completion views.
+
+## Phase 8: Candle Run Mode
+
+- [ ] Add a dedicated Candle Run mode that uses SkyGame-Data `candles`.
+- [ ] Add candle run route selection by realm or candle map.
+- [ ] Show candle map images with candle groups, wax values, and manual progress.
+- [ ] Add overlay support for the current candle group and next group.
+- [ ] Add hotkeys to move between candle groups and mark groups complete.
+- [ ] Add a local session recap for completed groups and estimated wax covered.
+- [ ] Keep candle runs manual-only: no memory reading, no input automation, and
+  no claim of live in-game location tracking.
+
+Acceptance: a player can start a candle run before opening Sky, follow the
+overlay while playing, manually mark candle groups complete, and see a local
+session recap afterward.
+
+## Phase 9: Traveling Spirit Prep Mode
+
+- [ ] Add a Traveling Spirit prep surface for upcoming and active visits.
+- [ ] Show spirit location, realm, area, visit dates, and wiki/calendar links.
+- [ ] Use item, shop, tree, and node data to show available cosmetics and costs
+  when the generated data can resolve them.
+- [ ] Highlight wishlist items available from the current or upcoming spirit.
+- [ ] Add an overlay mode for "current TS objective" with route target context.
+- [ ] Add a prep checklist for candles, hearts, ascended candles, and wanted
+  items.
+- [ ] Include returning spirit group visits from `specialVisits` as a related
+  flow, without merging them into single-spirit visits.
+
+Acceptance: a player can see what to save, where to go, which wanted items are
+available, and what to do in-game when a Traveling Spirit or returning spirit
+visit is active.
+
+## Phase 10: Game Presence Integration
+
+- [ ] Detect whether the Sky process or game window is running on desktop.
+- [ ] Auto-show or auto-hide the overlay based on Sky presence and user settings.
+- [ ] Add settings for presence behavior:
+  - [ ] Do nothing
+  - [ ] Show overlay when Sky starts
+  - [ ] Hide overlay when Sky exits
+  - [ ] Bring Isekai controls forward when Sky is not focused
+- [ ] Avoid any integration that reads game memory, intercepts network traffic,
+  modifies game files, injects into the process, or automates gameplay.
+- [ ] Keep all presence detection at the OS/window/process level only.
+- [ ] Add a visible safety note in settings explaining the passive integration
+  boundary.
+
+Acceptance: Isekai can behave like a companion app that wakes up around Sky
+without touching the game internals or creating ToS-risky automation.

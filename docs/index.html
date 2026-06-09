@@ -21,6 +21,17 @@
       rel="stylesheet"
     />
     <link rel="icon" href="assets/sky-avatar-icon.png" />
+    <script>
+      (() => {
+        try {
+          const savedTheme = localStorage.getItem("isekai-docs-theme");
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -38,6 +49,10 @@
         <a href="https://discord.gg/a7vGCk7XQa" target="_blank" rel="noreferrer">Support</a>
         <a href="#faq">FAQ</a>
       </nav>
+      <button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false">
+        <span class="theme-toggle-icon" aria-hidden="true"></span>
+        <span class="theme-toggle-text">Dark</span>
+      </button>
     </header>
 
     <main id="top">
@@ -75,6 +90,7 @@
               loop
               muted
               playsinline
+              preload="auto"
               poster="https://raw.githubusercontent.com/radcolor/sky_cotl_clock/main/assets/product-demo.gif"
               aria-label="Isekai desktop app demo"
             >
