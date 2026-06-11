@@ -62,7 +62,6 @@ export interface AppSettings {
       enabled: boolean;
       showOverlayOnStart: boolean;
       hideOverlayOnExit: boolean;
-      showMainWhenGameBlurred: boolean;
       startupDelayMs: number;
       processNames: string[];
     };

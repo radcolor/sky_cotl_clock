@@ -1035,7 +1035,7 @@ export function OverlaySettingsPage({
             <Separator />
             <SettingSwitch
               label="Enable game detection"
-              description="Watch for Sky at the OS process and foreground-window level."
+              description="Watch for the Sky process and show or hide the overlay automatically."
               checked={settings.overlay.gameDetection.enabled}
               onCheckedChange={(enabled) =>
                 onSettingsChange({
@@ -1101,24 +1101,6 @@ export function OverlaySettingsPage({
                     gameDetection: {
                       ...settings.overlay.gameDetection,
                       hideOverlayOnExit,
-                    },
-                  },
-                })
-              }
-            />
-            <SettingSwitch
-              label="Show controls when Sky loses focus"
-              description="Bring Isekai forward once when Sky is still running but no longer the foreground window."
-              checked={settings.overlay.gameDetection.showMainWhenGameBlurred}
-              disabled={!settings.overlay.gameDetection.enabled}
-              onCheckedChange={(showMainWhenGameBlurred) =>
-                onSettingsChange({
-                  ...settings,
-                  overlay: {
-                    ...settings.overlay,
-                    gameDetection: {
-                      ...settings.overlay.gameDetection,
-                      showMainWhenGameBlurred,
                     },
                   },
                 })

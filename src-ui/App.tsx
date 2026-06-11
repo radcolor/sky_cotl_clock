@@ -42,14 +42,10 @@ import {
   hideOverlay,
   isTauriRuntime,
   registerAppHotkeys,
-  showMainWindow,
   showOverlay,
   toggleOverlay,
 } from "@/tauri/overlay";
-import {
-  isGameProcessForeground,
-  isGameProcessRunning,
-} from "@/tauri/game-detection";
+import { isGameProcessRunning } from "@/tauri/game-detection";
 import {
   CalendarPage,
   CandleRunsPage,
@@ -190,8 +186,8 @@ function App() {
   const gamePresence = useRef({
     running: false,
     overlayShownForLaunch: false,
-    mainShownForBlur: false,
     showTimer: 0,
+    checking: false,
   });
   const enabledEventsKey = useMemo(
     () => JSON.stringify(settings.events),
@@ -441,7 +437,7 @@ function App() {
       }
       state.running = false;
       state.overlayShownForLaunch = false;
-      state.mainShownForBlur = false;
+      state.checking = false;
       return;
     }
 
@@ -462,22 +458,23 @@ function App() {
 
       state.showTimer = window.setTimeout(async () => {
         state.showTimer = 0;
-        if (cancelled || state.overlayShownForLaunch) {
+        if (cancelled || state.overlayShownForLaunch || !state.running) {
           return;
         }
 
-        const stillRunning = await isGameProcessRunning(processNames).catch(
-          () => false,
-        );
-        if (!cancelled && stillRunning) {
-          await showOverlay(latestSettings.current);
-          state.overlayShownForLaunch = true;
-        }
+        await showOverlay(latestSettings.current);
+        state.overlayShownForLaunch = true;
       }, delayMs);
     };
 
     const checkPresence = async () => {
+      if (state.checking) {
+        return;
+      }
+
+      state.checking = true;
       const running = await isGameProcessRunning(processNames).catch(() => false);
+      state.checking = false;
       if (cancelled) {
         return;
       }
@@ -487,28 +484,11 @@ function App() {
           state.running = true;
         }
         scheduleOverlay();
-
-        if (detection.showMainWhenGameBlurred) {
-          const foreground = await isGameProcessForeground(processNames).catch(
-            () => true,
-          );
-          if (cancelled) {
-            return;
-          }
-
-          if (foreground) {
-            state.mainShownForBlur = false;
-          } else if (!state.mainShownForBlur) {
-            await showMainWindow();
-            state.mainShownForBlur = true;
-          }
-        }
       }
 
       if (!running && state.running) {
         state.running = false;
         state.overlayShownForLaunch = false;
-        state.mainShownForBlur = false;
         if (state.showTimer) {
           window.clearTimeout(state.showTimer);
           state.showTimer = 0;
@@ -520,7 +500,7 @@ function App() {
     };
 
     void checkPresence();
-    const interval = window.setInterval(() => void checkPresence(), 2_000);
+    const interval = window.setInterval(() => void checkPresence(), 5_000);
 
     return () => {
       cancelled = true;
@@ -535,7 +515,6 @@ function App() {
     settings.overlay.gameDetection.enabled,
     settings.overlay.gameDetection.hideOverlayOnExit,
     settings.overlay.gameDetection.processNames,
-    settings.overlay.gameDetection.showMainWhenGameBlurred,
     settings.overlay.gameDetection.showOverlayOnStart,
     settings.overlay.gameDetection.startupDelayMs,
     windowLabel,
