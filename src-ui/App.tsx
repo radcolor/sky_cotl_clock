@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type AnimationEvent,
+  type ReactNode,
+} from "react";
 import type { Update } from "@tauri-apps/plugin-updater";
 import {
   isPermissionGranted,
@@ -45,6 +52,7 @@ import {
 } from "@/tauri/game-detection";
 import {
   CalendarPage,
+  CandleRunsPage,
   CollectionPage,
   GoalsPage,
   Overlay,
@@ -827,7 +835,7 @@ function App() {
             />
             <SidebarInset className="flex h-full min-h-0 overflow-hidden">
               <div className="theme-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-                <PageContent
+                <PageTransition
                   activePage={activePage}
                   now={now}
                   selectedDate={selectedDate}
@@ -851,6 +859,94 @@ function App() {
         <Toaster theme={resolvedTheme} />
       </div>
     </TooltipProvider>
+  );
+}
+
+function PageTransition({
+  activePage,
+  now,
+  selectedDate,
+  events,
+  planner,
+  settings,
+  hotkeyError,
+  updateState,
+  reminders,
+  onPlannerChange,
+  onSettingsChange,
+  onToggleOverlay,
+  onToggleReminder,
+  onRefreshUpdate,
+  onInstallUpdate,
+}: {
+  activePage: AppPage;
+  now: Date;
+  selectedDate: Date;
+  events: EventInstance[];
+  planner: PlannerState;
+  settings: AppSettings;
+  hotkeyError: string;
+  updateState: AppUpdateState;
+  reminders: Record<string, boolean>;
+  onPlannerChange: (planner: PlannerState) => void;
+  onSettingsChange: (settings: AppSettings) => void;
+  onToggleOverlay: () => void;
+  onToggleReminder: (event: EventInstance) => void;
+  onRefreshUpdate: () => void;
+  onInstallUpdate: () => void;
+}) {
+  const [visiblePage, setVisiblePage] = useState(activePage);
+  const [isExiting, setIsExiting] = useState(false);
+
+  useEffect(() => {
+    if (activePage === visiblePage) {
+      setIsExiting(false);
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setVisiblePage(activePage);
+      setIsExiting(false);
+      return;
+    }
+
+    setIsExiting(true);
+  }, [activePage, visiblePage]);
+
+  function handleAnimationEnd(event: AnimationEvent<HTMLDivElement>) {
+    if (event.animationName !== "page-fade-out" || !isExiting) {
+      return;
+    }
+
+    setVisiblePage(activePage);
+    setIsExiting(false);
+  }
+
+  return (
+    <div
+      key={visiblePage}
+      className="page-transition"
+      data-exiting={isExiting}
+      onAnimationEnd={handleAnimationEnd}
+    >
+      <PageContent
+        activePage={visiblePage}
+        now={now}
+        selectedDate={selectedDate}
+        events={events}
+        planner={planner}
+        settings={settings}
+        hotkeyError={hotkeyError}
+        updateState={updateState}
+        reminders={reminders}
+        onPlannerChange={onPlannerChange}
+        onSettingsChange={onSettingsChange}
+        onToggleOverlay={onToggleOverlay}
+        onToggleReminder={onToggleReminder}
+        onRefreshUpdate={onRefreshUpdate}
+        onInstallUpdate={onInstallUpdate}
+      />
+    </div>
   );
 }
 
@@ -1039,6 +1135,12 @@ function PageContent({
     return <RoutesPage planner={planner} onPlannerChange={onPlannerChange} />;
   }
 
+  if (activePage === "candle-runs") {
+    return (
+      <CandleRunsPage planner={planner} onPlannerChange={onPlannerChange} />
+    );
+  }
+
   if (activePage === "goals") {
     return <GoalsPage planner={planner} onPlannerChange={onPlannerChange} />;
   }
@@ -1093,6 +1195,7 @@ function pageTitle(page: AppPage) {
     overview: "Overview",
     calendar: "Calendar",
     routes: "Routes",
+    "candle-runs": "Candle Run",
     goals: "Goals",
     collection: "Collection",
     overlay: "Overlay",

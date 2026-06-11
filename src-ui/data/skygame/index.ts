@@ -116,6 +116,39 @@ export interface SkyRouteCounts {
   total: number;
 }
 
+export interface SkyCandle {
+  p?: [number, number];
+  c: number;
+  description?: string;
+}
+
+export interface SkyCandleGroup {
+  name: string;
+  poly?: Array<[number, number]>;
+  candles: SkyCandle[];
+}
+
+export interface SkyCandleRun {
+  guid: string;
+  name: string;
+  imageUrl?: string;
+  imageSize?: [number, number];
+  imageAttribution?: string;
+  groups: SkyCandleGroup[];
+  connections?: Array<{
+    guid: string;
+    p?: [number, number];
+  }>;
+}
+
+export interface SkyCandleRunSummary {
+  guid: string;
+  name: string;
+  imageUrl?: string;
+  groupCount: number;
+  waxCount: number;
+}
+
 export interface SkyRouteTarget {
   guid: string;
   sourceGuid: string;
@@ -275,6 +308,20 @@ export class SkyDataIndex {
     return this.data.sourceGroups;
   }
 
+  getCandleRuns(): SkyCandleRunSummary[] {
+    return this.getRawCandleRuns().map((run) => ({
+      guid: run.guid,
+      name: run.name,
+      imageUrl: run.imageUrl,
+      groupCount: run.groups.length,
+      waxCount: countCandleRunWax(run),
+    }));
+  }
+
+  getCandleRun(guid: string) {
+    return this.getRawCandleRuns().find((run) => run.guid === guid) ?? null;
+  }
+
   getRealms() {
     return this.data.realms.filter((realm) => !realm.hidden);
   }
@@ -410,6 +457,10 @@ export class SkyDataIndex {
       ).length,
     };
   }
+
+  private getRawCandleRuns() {
+    return (this.data.sourceGroups.candles ?? []) as SkyCandleRun[];
+  }
 }
 
 export const skyDataIndex = new SkyDataIndex();
@@ -427,6 +478,17 @@ export function normalizeRouteFilters(
     spirits: filters?.spirits !== false,
     wingedLights: filters?.wingedLights !== false,
   };
+}
+
+export function countCandleGroupWax(group: SkyCandleGroup) {
+  return group.candles.reduce((total, candle) => total + candle.c, 0);
+}
+
+export function countCandleRunWax(run: SkyCandleRun) {
+  return run.groups.reduce(
+    (total, group) => total + countCandleGroupWax(group),
+    0,
+  );
 }
 
 function groupBy<T>(

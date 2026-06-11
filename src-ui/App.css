@@ -196,6 +196,50 @@ body[data-window-label="main"] .app-main-shell [data-slot="sidebar-container"] {
   height: calc(100svh - var(--app-titlebar-height));
 }
 
+.page-transition {
+  display: flex;
+  min-height: 100%;
+  flex: 1;
+  flex-direction: column;
+  animation: page-fade-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+
+.page-transition[data-exiting="true"] {
+  animation: page-fade-out 180ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes page-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-0.375rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition,
+  .page-transition[data-exiting="true"] {
+    animation: none;
+    transform: none;
+    will-change: auto;
+  }
+}
+
 html[data-app-hardened="true"],
 html[data-app-hardened="true"] body,
 html[data-app-hardened="true"] #root {

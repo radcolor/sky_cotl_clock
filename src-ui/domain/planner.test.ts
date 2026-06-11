@@ -4,8 +4,11 @@ import {
   deserializePlannerState,
   moveActiveRouteTarget,
   resetAllRouteProgress,
+  resetCandleRunProgress,
   setActiveRoute,
+  setActiveCandleRun,
   serializePlannerState,
+  toggleCandleGroupComplete,
   toggleRouteTargetComplete,
 } from "./planner";
 
@@ -47,6 +50,7 @@ describe("planner storage", () => {
     expect(migrated.activeRoute.targetIndex).toBe(0);
     expect(migrated.activeRoute.filters.spirits).toBe(true);
     expect(migrated.routeProgress.completedTargets).toEqual({});
+    expect(migrated.candleRun.completedGroups).toEqual({});
   });
 
   test("updates route state and progress", () => {
@@ -64,5 +68,18 @@ describe("planner storage", () => {
     expect(moved.activeRoute.targetIndex).toBe(1);
     expect(completed.routeProgress.completedTargets["spirit:one"]).toBe(true);
     expect(reset.routeProgress.completedTargets).toEqual({});
+  });
+
+  test("updates candle run state and progress", () => {
+    const active = setActiveCandleRun(DEFAULT_PLANNER_STATE, "prairie");
+    const completed = toggleCandleGroupComplete(active, "prairie:butterfly-fields");
+    const reset = resetCandleRunProgress(completed);
+
+    expect(active.candleRun.activeRunGuid).toBe("prairie");
+    expect(
+      completed.candleRun.completedGroups["prairie:butterfly-fields"],
+    ).toBe(true);
+    expect(reset.candleRun.completedGroups).toEqual({});
+    expect(reset.candleRun.activeRunGuid).toBe("prairie");
   });
 });

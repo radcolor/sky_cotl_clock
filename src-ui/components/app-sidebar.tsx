@@ -3,6 +3,7 @@ import {
   CalendarDays,
   CheckSquare,
   Eye,
+  Flame,
   Map,
   Monitor,
   Moon,
@@ -35,6 +36,7 @@ import { cn } from "@/lib/utils";
 export type AppPage =
   | "overview"
   | "calendar"
+  | "candle-runs"
   | "goals"
   | "collection"
   | "routes"
@@ -69,6 +71,7 @@ const sections: Array<{
     items: [
       { id: "calendar", title: "Calendar", icon: CalendarDays },
       { id: "routes", title: "Routes", icon: Map },
+      { id: "candle-runs", title: "Candle Run", icon: Flame },
       { id: "goals", title: "Goals", icon: CheckSquare },
       { id: "collection", title: "Collection", icon: Search },
     ],

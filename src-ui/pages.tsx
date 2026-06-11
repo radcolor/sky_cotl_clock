@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type * as React from "react";
+import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,6 +12,7 @@ import {
   Clock,
   Download,
   Eye,
+  Flame,
   Info,
   Keyboard,
   Monitor,
@@ -56,8 +58,11 @@ import { ACCENT_OPTIONS, FONT_OPTIONS } from "@/domain/theme";
 import {
   createGoal,
   resetAllRouteProgress,
+  resetCandleRunProgress,
   resetCurrentAreaRoute,
+  setActiveCandleRun,
   setActiveRoute,
+  toggleCandleGroupComplete,
   type PlannerGoal,
   type PlannerState,
 } from "@/domain/planner";
@@ -70,10 +75,12 @@ import type { AppSettings, EventInstance } from "@/domain/types";
 import type {
   SkyAreaRoute,
   SkyCalendarEntry,
+  SkyCandleGroup,
+  SkyCandleRunSummary,
   SkyItemSummary,
   SkyRouteTarget,
 } from "@/data/skygame";
-import { skyDataIndex } from "@/data/skygame";
+import { countCandleGroupWax, skyDataIndex } from "@/data/skygame";
 import { formatBytes, type AppUpdateState } from "@/tauri/updater";
 import { isTauriRuntime } from "@/tauri/overlay";
 
@@ -638,6 +645,200 @@ export function RoutesPage({
               ) : (
                 <p className="text-sm text-muted-foreground">
                   {skyData ? "No route targets match these filters." : "Loading route data..."}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function CandleRunsPage({
+  planner,
+  onPlannerChange,
+}: {
+  planner: PlannerState;
+  onPlannerChange: (planner: PlannerState) => void;
+}) {
+  const skyData = useSkyData();
+  const runs = useMemo(
+    () => skyData?.skyDataIndex.getCandleRuns() ?? [],
+    [skyData],
+  );
+  const fallbackRunGuid = runs[0]?.guid;
+  const storedRun =
+    planner.candleRun.activeRunGuid && skyData
+      ? skyData.skyDataIndex.getCandleRun(planner.candleRun.activeRunGuid)
+      : null;
+  const selectedRun =
+    storedRun ??
+    (fallbackRunGuid && skyData
+      ? skyData.skyDataIndex.getCandleRun(fallbackRunGuid)
+      : null);
+  const selectedRunGuid = selectedRun?.guid ?? fallbackRunGuid;
+  const currentSessionDate = new Date().toISOString().slice(0, 10);
+  const runGroupKeys = selectedRun
+    ? selectedRun.groups.map((group, index) =>
+        candleGroupKey(selectedRun.guid, group, index),
+      )
+    : [];
+  const completedGroups = runGroupKeys.filter(
+    (key) => planner.candleRun.completedGroups[key],
+  ).length;
+  const totalWax = selectedRun
+    ? selectedRun.groups.reduce(
+        (total, group) => total + countCandleGroupWax(group),
+        0,
+      )
+    : 0;
+  const completedWax = selectedRun
+    ? selectedRun.groups.reduce((total, group, index) => {
+        const key = candleGroupKey(selectedRun.guid, group, index);
+        return planner.candleRun.completedGroups[key]
+          ? total + countCandleGroupWax(group)
+          : total;
+      }, 0)
+    : 0;
+  const completionRatio =
+    runGroupKeys.length > 0 ? completedGroups / runGroupKeys.length : 0;
+
+  useEffect(() => {
+    if (planner.candleRun.sessionDate !== currentSessionDate) {
+      onPlannerChange(resetCandleRunProgress(planner));
+    }
+  }, [currentSessionDate, onPlannerChange, planner]);
+
+  function selectRun(runGuid: string) {
+    onPlannerChange(setActiveCandleRun(planner, runGuid));
+  }
+
+  function toggleGroup(group: SkyCandleGroup, index: number) {
+    if (!selectedRun) {
+      return;
+    }
+
+    onPlannerChange(
+      toggleCandleGroupComplete(
+        planner,
+        candleGroupKey(selectedRun.guid, group, index),
+      ),
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Candle Run"
+        description="Daily wax route progress from bundled Sky candle map data."
+        action={
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => onPlannerChange(resetCandleRunProgress(planner))}
+          >
+            <RefreshCw data-icon="inline-start" />
+            Reset today
+          </Button>
+        }
+      />
+      <div className="grid gap-4 p-5 xl:grid-cols-[340px_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Runs</CardTitle>
+            <CardDescription>
+              {runs.length > 0
+                ? `${runs.length} candle maps available.`
+                : "Loading candle maps..."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2">
+            {runs.length > 0 ? (
+              runs.map((run) => (
+                <CandleRunButton
+                  key={run.guid}
+                  run={run}
+                  active={run.guid === selectedRunGuid}
+                  completedGroups={countCompletedRunGroups(
+                    run.guid,
+                    planner.candleRun.completedGroups,
+                    skyData?.skyDataIndex.getCandleRun(run.guid)?.groups ?? [],
+                  )}
+                  onClick={() => selectRun(run.guid)}
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Loading candle run data...
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4">
+          <Card>
+            {selectedRun?.imageUrl ? (
+              <CandleRunMapPreview
+                imageUrl={selectedRun.imageUrl}
+                name={selectedRun.name}
+              />
+            ) : null}
+            <CardHeader>
+              <CardTitle className="text-base">
+                {selectedRun?.name ?? "No candle run selected"}
+              </CardTitle>
+              <CardDescription>
+                {selectedRun
+                  ? `${completedGroups} of ${selectedRun.groups.length} groups complete today.`
+                  : "Choose a run to start tracking."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="grid gap-2 md:grid-cols-3">
+                <InfoRow
+                  label="Groups"
+                  value={`${completedGroups}/${runGroupKeys.length}`}
+                />
+                <InfoRow label="Wax" value={`${completedWax}/${totalWax}`} />
+                <InfoRow
+                  label="Session"
+                  value={planner.candleRun.sessionDate}
+                />
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-[width]"
+                  style={{ width: `${Math.round(completionRatio * 100)}%` }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Candle Groups</CardTitle>
+              <CardDescription>
+                Mark groups as you collect them during today&apos;s run.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {selectedRun ? (
+                selectedRun.groups.map((group, index) => {
+                  const key = candleGroupKey(selectedRun.guid, group, index);
+                  return (
+                    <CandleGroupRow
+                      key={key}
+                      group={group}
+                      index={index}
+                      complete={planner.candleRun.completedGroups[key] === true}
+                      onToggle={() => toggleGroup(group, index)}
+                    />
+                  );
+                })
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {skyData ? "No candle run selected." : "Loading candle data..."}
                 </p>
               )}
             </CardContent>
@@ -2527,6 +2728,306 @@ function RouteTargetRow({
   );
 }
 
+function CandleRunMapPreview({
+  imageUrl,
+  name,
+}: {
+  imageUrl: string;
+  name: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [drag, setDrag] = useState<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    panX: number;
+    panY: number;
+    moved: boolean;
+  } | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
+
+  function resetImageView() {
+    setZoomed(false);
+    setZoomOrigin({ x: 50, y: 50 });
+    setPan({ x: 0, y: 0 });
+    setDrag(null);
+  }
+
+  function openMap() {
+    resetImageView();
+    setOpen(true);
+  }
+
+  function closeMap() {
+    setOpen(false);
+    resetImageView();
+  }
+
+  function toggleImageZoom(event: React.PointerEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+
+    if (drag?.moved) {
+      setDrag(null);
+      return;
+    }
+
+    if (zoomed) {
+      resetImageView();
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    setZoomOrigin({
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
+    });
+    setPan({ x: 0, y: 0 });
+    setZoomed(true);
+  }
+
+  function startImageDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+
+    if (!zoomed) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDrag({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      moved: false,
+    });
+  }
+
+  function moveImageDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.stopPropagation();
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    setDrag({
+      ...drag,
+      moved: drag.moved || Math.hypot(deltaX, deltaY) > 4,
+    });
+    setPan({
+      x: drag.panX + deltaX,
+      y: drag.panY + deltaY,
+    });
+  }
+
+  function endImageDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.stopPropagation();
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeMap();
+      }
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  const overlay =
+    open && portalReady
+      ? createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${name} candle map`}
+            className="fixed inset-0 z-50 flex h-svh w-svw touch-none items-center justify-center overflow-hidden bg-background/85 p-6 backdrop-blur-sm"
+            onClick={closeMap}
+            onWheel={(event) => event.preventDefault()}
+          >
+            <Button
+              type="button"
+              aria-label="Close map"
+              title="Close map"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute right-4 top-4 bg-background/80 shadow-sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                closeMap();
+              }}
+            >
+              <X />
+            </Button>
+            <button
+              type="button"
+              aria-label={zoomed ? "Show full map" : "Zoom map"}
+              className={cn(
+                "flex max-h-[calc(100svh-3rem)] max-w-[calc(100svw-3rem)] items-center justify-center overflow-hidden outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                zoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in",
+              )}
+              onClick={toggleImageZoom}
+              onPointerDown={startImageDrag}
+              onPointerMove={moveImageDrag}
+              onPointerUp={endImageDrag}
+              onPointerCancel={endImageDrag}
+            >
+              <img
+                src={imageUrl}
+                alt={`${name} candle map`}
+                className={cn(
+                  "max-h-[calc(100svh-3rem)] max-w-[calc(100svw-3rem)] object-contain drop-shadow-2xl transition-transform duration-200",
+                  zoomed && "scale-200",
+                )}
+                draggable={false}
+                style={{
+                  transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
+                  translate: `${pan.x}px ${pan.y}px`,
+                }}
+              />
+            </button>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Open ${name} candle map`}
+        className="group relative aspect-[16/6] w-full overflow-hidden bg-muted text-left outline-hidden transition-opacity hover:opacity-95 focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={openMap}
+      >
+        <img
+          src={imageUrl}
+          alt=""
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+        />
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/95 to-transparent p-4">
+          <p className="text-lg font-semibold">{name}</p>
+        </div>
+        <div className="absolute right-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          Open map
+        </div>
+      </button>
+      {overlay}
+    </>
+  );
+}
+
+function CandleRunButton({
+  run,
+  active,
+  completedGroups,
+  onClick,
+}: {
+  run: SkyCandleRunSummary;
+  active: boolean;
+  completedGroups: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "grid min-w-0 gap-1 rounded-md border border-border bg-card/70 p-3 text-left transition-colors hover:bg-muted/35",
+        active && "border-primary/35 bg-primary/10",
+      )}
+      onClick={onClick}
+    >
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <span className="truncate text-sm font-medium">{run.name}</span>
+        {active ? <Badge className="rounded-sm">Active</Badge> : null}
+      </div>
+      <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+        <span>{completedGroups}/{run.groupCount} groups</span>
+        <span>{run.waxCount} wax</span>
+      </div>
+    </button>
+  );
+}
+
+function CandleGroupRow({
+  group,
+  index,
+  complete,
+  onToggle,
+}: {
+  group: SkyCandleGroup;
+  index: number;
+  complete: boolean;
+  onToggle: () => void;
+}) {
+  const waxCount = countCandleGroupWax(group);
+
+  return (
+    <div
+      className={cn(
+        "grid gap-2 rounded-md border border-border bg-card/70 p-3 transition-colors md:grid-cols-[auto_1fr_auto] md:items-center",
+        complete && "opacity-65",
+      )}
+    >
+      <Badge variant={complete ? "default" : "secondary"}>{index + 1}</Badge>
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="truncate text-sm font-medium">{group.name}</p>
+          <Badge variant="outline" className="rounded-sm">
+            {group.candles.length} spots
+          </Badge>
+          <Badge variant="outline" className="rounded-sm">
+            {waxCount} wax
+          </Badge>
+        </div>
+        <p className="truncate text-xs text-muted-foreground">
+          {group.candles
+            .map((candle) => candle.description)
+            .filter(Boolean)
+            .slice(0, 2)
+            .join(" - ") || "Standard candle group"}
+        </p>
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant={complete ? "default" : "secondary"}
+        onClick={onToggle}
+      >
+        {complete ? (
+          <CircleCheck data-icon="inline-start" />
+        ) : (
+          <Flame data-icon="inline-start" />
+        )}
+        {complete ? "Done" : "Mark"}
+      </Button>
+    </div>
+  );
+}
+
 function GoalRow({
   goal,
   onStatusChange,
@@ -2947,6 +3448,24 @@ function SliderSetting({
       />
     </div>
   );
+}
+
+function candleGroupKey(
+  runGuid: string,
+  group: SkyCandleGroup,
+  index: number,
+) {
+  return `${runGuid}:${index}:${group.name}`;
+}
+
+function countCompletedRunGroups(
+  runGuid: string,
+  completedGroups: Record<string, boolean>,
+  groups: SkyCandleGroup[],
+) {
+  return groups.filter((group, index) =>
+    completedGroups[candleGroupKey(runGuid, group, index)],
+  ).length;
 }
 
 function groupCalendar(

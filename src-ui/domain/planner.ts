@@ -24,12 +24,19 @@ export interface RouteProgressState {
   sessionDate: string;
 }
 
+export interface CandleRunState {
+  activeRunGuid?: string;
+  completedGroups: Record<string, boolean>;
+  sessionDate: string;
+}
+
 export interface PlannerState {
   goals: PlannerGoal[];
   wishlist: Record<string, boolean>;
   completedGoals: Record<string, boolean>;
   activeRoute: ActiveRouteState;
   routeProgress: RouteProgressState;
+  candleRun: CandleRunState;
   dailyRouteSessions: Record<string, RouteProgressState>;
   calendarFilters: {
     events: boolean;
@@ -57,12 +64,18 @@ export const DEFAULT_ROUTE_PROGRESS: RouteProgressState = {
   sessionDate: todayIso(),
 };
 
+export const DEFAULT_CANDLE_RUN_STATE: CandleRunState = {
+  completedGroups: {},
+  sessionDate: todayIso(),
+};
+
 export const DEFAULT_PLANNER_STATE: PlannerState = {
   goals: [],
   wishlist: {},
   completedGoals: {},
   activeRoute: DEFAULT_ACTIVE_ROUTE,
   routeProgress: DEFAULT_ROUTE_PROGRESS,
+  candleRun: DEFAULT_CANDLE_RUN_STATE,
   dailyRouteSessions: {},
   calendarFilters: {
     events: true,
@@ -85,6 +98,7 @@ export function mergePlannerState(
     completedGoals: stored.completedGoals ?? DEFAULT_PLANNER_STATE.completedGoals,
     activeRoute: mergeActiveRoute(stored.activeRoute),
     routeProgress: mergeRouteProgress(stored.routeProgress),
+    candleRun: mergeCandleRun(stored.candleRun),
     dailyRouteSessions: stored.dailyRouteSessions ?? {},
     calendarFilters: {
       ...DEFAULT_PLANNER_STATE.calendarFilters,
@@ -228,6 +242,52 @@ export function resetAllRouteProgress(state: PlannerState): PlannerState {
   };
 }
 
+export function setActiveCandleRun(
+  state: PlannerState,
+  activeRunGuid: string,
+): PlannerState {
+  return {
+    ...state,
+    candleRun: {
+      ...state.candleRun,
+      activeRunGuid,
+      sessionDate: todayIso(),
+    },
+  };
+}
+
+export function toggleCandleGroupComplete(
+  state: PlannerState,
+  groupKey: string,
+): PlannerState {
+  const completedGroups = { ...state.candleRun.completedGroups };
+  if (completedGroups[groupKey]) {
+    delete completedGroups[groupKey];
+  } else {
+    completedGroups[groupKey] = true;
+  }
+
+  return {
+    ...state,
+    candleRun: {
+      ...state.candleRun,
+      completedGroups,
+      sessionDate: todayIso(),
+    },
+  };
+}
+
+export function resetCandleRunProgress(state: PlannerState): PlannerState {
+  return {
+    ...state,
+    candleRun: {
+      ...state.candleRun,
+      completedGroups: {},
+      sessionDate: todayIso(),
+    },
+  };
+}
+
 export function toggleMiniMapExpanded(state: PlannerState): PlannerState {
   return {
     ...state,
@@ -262,6 +322,16 @@ function mergeRouteProgress(
 ): RouteProgressState {
   return {
     completedTargets: stored?.completedTargets ?? {},
+    sessionDate: stored?.sessionDate ?? todayIso(),
+  };
+}
+
+function mergeCandleRun(
+  stored: Partial<CandleRunState> | undefined,
+): CandleRunState {
+  return {
+    activeRunGuid: stored?.activeRunGuid,
+    completedGroups: stored?.completedGroups ?? {},
     sessionDate: stored?.sessionDate ?? todayIso(),
   };
 }
