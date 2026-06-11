@@ -62,6 +62,10 @@ export function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
 
+function supportsCursorIgnoreEvents(): boolean {
+  return !/\bLinux\b/i.test(navigator.userAgent);
+}
+
 export async function getWindowLabel(): Promise<string> {
   if (!isTauriRuntime()) {
     return "main";
@@ -82,7 +86,9 @@ export async function configureOverlayWindow(settings: AppSettings) {
 
   await current.setVisibleOnAllWorkspaces(true);
   await current.setAlwaysOnTop(true);
-  await current.setIgnoreCursorEvents(settings.overlay.clickThrough);
+  if (supportsCursorIgnoreEvents()) {
+    await current.setIgnoreCursorEvents(settings.overlay.clickThrough);
+  }
   const size = overlaySize(settings);
   await current.setSize(new LogicalSize(size.width, size.height));
   await positionOverlay(settings);
