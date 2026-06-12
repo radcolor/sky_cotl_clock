@@ -1,3 +1,5 @@
+import type { LocaleCode } from "@/i18n";
+
 export type EventCategory = "reset" | "wax" | "weekly" | "shard" | "seasonal";
 
 export type EventStatus =
@@ -35,6 +37,7 @@ export interface EventInstance {
 }
 
 export interface AppSettings {
+  language: LocaleCode;
   theme: "dark" | "light" | "system";
   appearance: {
     accentColor:

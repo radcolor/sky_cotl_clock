@@ -72,6 +72,12 @@ import {
   skyNow,
 } from "@/domain/skyTime";
 import type { AppSettings, EventInstance } from "@/domain/types";
+import {
+  SUPPORTED_LOCALES,
+  useI18n,
+  type LocaleCode,
+  type MessageKey,
+} from "@/i18n";
 import type {
   SkyAreaRoute,
   SkyCalendarEntry,
@@ -99,38 +105,38 @@ const COMMON_TIME_ZONES = [
 
 const OVERLAY_POSITION_OPTIONS: Array<{
   value: AppSettings["overlay"]["position"];
-  label: string;
+  labelKey: MessageKey;
 }> = [
-  { value: "top-right", label: "Top right" },
-  { value: "bottom-right", label: "Bottom right" },
-  { value: "top-left", label: "Top left" },
-  { value: "bottom-left", label: "Bottom left" },
+  { value: "top-right", labelKey: "overlay.position.topRight" },
+  { value: "bottom-right", labelKey: "overlay.position.bottomRight" },
+  { value: "top-left", labelKey: "overlay.position.topLeft" },
+  { value: "bottom-left", labelKey: "overlay.position.bottomLeft" },
 ];
 
 const OVERLAY_MODE_OPTIONS: Array<{
   value: AppSettings["overlay"]["mode"];
-  label: string;
-  description: string;
+  labelKey: MessageKey;
+  descriptionKey: MessageKey;
 }> = [
   {
     value: "clock",
-    label: "Clock",
-    description: "Timer rows only.",
+    labelKey: "overlay.mode.clock",
+    descriptionKey: "overlay.mode.clock.description",
   },
   {
     value: "route",
-    label: "Route",
-    description: "Current route target as text.",
+    labelKey: "overlay.mode.route",
+    descriptionKey: "overlay.mode.route.description",
   },
   {
     value: "mini-map",
-    label: "Mini map",
-    description: "Map panel with current route pins.",
+    labelKey: "overlay.mode.miniMap",
+    descriptionKey: "overlay.mode.miniMap.description",
   },
   {
     value: "clock-route",
-    label: "Clock + route",
-    description: "Clock rows with mini map and route text.",
+    labelKey: "overlay.mode.clockRoute",
+    descriptionKey: "overlay.mode.clockRoute.description",
   },
 ];
 
@@ -998,8 +1004,9 @@ export function OverlaySettingsPage({
   planner: PlannerState;
   onSettingsChange: (settings: AppSettings) => void;
 }) {
+  const { t } = useI18n(settings.language);
   const modeLabels = new Map(
-    OVERLAY_MODE_OPTIONS.map((mode) => [mode.value, mode.label] as const),
+    OVERLAY_MODE_OPTIONS.map((mode) => [mode.value, t(mode.labelKey)] as const),
   );
   const modeValues = OVERLAY_MODE_OPTIONS.map((mode) => mode.value);
   const selectedMode = modeValues.includes(settings.overlay.mode)
@@ -1009,24 +1016,23 @@ export function OverlaySettingsPage({
   return (
     <>
       <PageHeader
-        title="Overlay"
-        description="Passive click-through overlay controls for in-game use."
+        title={t("nav.overlay")}
+        description={t("overlay.settings.description")}
       />
       <div className="grid gap-4 p-5 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Behavior</CardTitle>
+            <CardTitle className="text-base">{t("overlay.settings.behavior.title")}</CardTitle>
             <CardDescription>
-              Choose the overlay layout and how it appears in-game.
+              {t("overlay.settings.behavior.description")}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="rounded-md border border-border/70 bg-muted/25 p-3 text-sm text-muted-foreground">
-              Clock mode uses the selected clock row count. Clock + route shows
-              up to 2 clock rows with the mini map and route text.
+              {t("overlay.settings.note")}
             </div>
             <SettingSwitch
-              label="Enable overlay"
+              label={t("overlay.enable")}
               checked={settings.overlay.enabled}
               onCheckedChange={(enabled) =>
                 onSettingsChange({ ...settings, overlay: { ...settings.overlay, enabled } })
@@ -1034,8 +1040,8 @@ export function OverlaySettingsPage({
             />
             <Separator />
             <SettingSwitch
-              label="Enable game detection"
-              description="Watch for the Sky process and show or hide the overlay automatically."
+              label={t("overlay.enableGameDetection")}
+              description={t("overlay.gameDetection.description")}
               checked={settings.overlay.gameDetection.enabled}
               onCheckedChange={(enabled) =>
                 onSettingsChange({
@@ -1051,8 +1057,8 @@ export function OverlaySettingsPage({
               }
             />
             <SettingSwitch
-              label="Show overlay when Sky starts"
-              description="Wait for the game splash and startup screens, then show the overlay once per launch."
+              label={t("overlay.showOnStart")}
+              description={t("overlay.showOnStart.description")}
               checked={settings.overlay.gameDetection.showOverlayOnStart}
               disabled={!settings.overlay.gameDetection.enabled}
               onCheckedChange={(showOverlayOnStart) =>
@@ -1069,7 +1075,7 @@ export function OverlaySettingsPage({
               }
             />
             <SliderSetting
-              label="Launch delay"
+              label={t("overlay.launchDelay")}
               value={settings.overlay.gameDetection.startupDelayMs / 1_000}
               min={2}
               max={5}
@@ -1089,8 +1095,8 @@ export function OverlaySettingsPage({
               }
             />
             <SettingSwitch
-              label="Hide overlay when Sky exits"
-              description="Hide the overlay after the Sky process stops."
+              label={t("overlay.hideOnExit")}
+              description={t("overlay.hideOnExit.description")}
               checked={settings.overlay.gameDetection.hideOverlayOnExit}
               disabled={!settings.overlay.gameDetection.enabled}
               onCheckedChange={(hideOverlayOnExit) =>
@@ -1115,7 +1121,7 @@ export function OverlaySettingsPage({
             </div>
             <Separator />
             <div className="grid gap-2">
-              <Label htmlFor="overlay-mode">Layout</Label>
+              <Label htmlFor="overlay-mode">{t("overlay.layout")}</Label>
               <Select
                 value={selectedMode}
                 onValueChange={(mode: AppSettings["overlay"]["mode"]) =>
@@ -1131,24 +1137,24 @@ export function OverlaySettingsPage({
                 <SelectContent>
                   {OVERLAY_MODE_OPTIONS.map((mode) => (
                     <SelectItem key={mode.value} value={mode.value}>
-                      {modeLabels.get(mode.value) ?? mode.label}
+                      {modeLabels.get(mode.value) ?? t(mode.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                The mode-cycle hotkey rotates through these same layouts.
+                {t("overlay.settings.modeCycleHelp")}
               </p>
             </div>
             <SettingSwitch
-              label="Click-through"
+              label={t("overlay.clickThrough")}
               checked={settings.overlay.clickThrough}
               onCheckedChange={(clickThrough) =>
                 onSettingsChange({ ...settings, overlay: { ...settings.overlay, clickThrough } })
               }
             />
             <div className="grid gap-2">
-              <Label htmlFor="overlay-position">Position</Label>
+              <Label htmlFor="overlay-position">{t("overlay.position")}</Label>
               <Select
                 value={settings.overlay.position}
                 onValueChange={(position: AppSettings["overlay"]["position"]) =>
@@ -1164,14 +1170,14 @@ export function OverlaySettingsPage({
                 <SelectContent>
                   {OVERLAY_POSITION_OPTIONS.map((position) => (
                     <SelectItem key={position.value} value={position.value}>
-                      {position.label}
+                      {t(position.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <SliderSetting
-              label="Opacity"
+              label={t("overlay.opacity")}
               value={settings.overlay.opacity}
               min={0.2}
               max={1}
@@ -1182,7 +1188,7 @@ export function OverlaySettingsPage({
               }
             />
             <SliderSetting
-              label="Scale"
+              label={t("overlay.scale")}
               value={settings.overlay.scale}
               min={0.8}
               max={1.4}
@@ -1193,7 +1199,7 @@ export function OverlaySettingsPage({
               }
             />
             <SliderSetting
-              label="Clock rows"
+              label={t("overlay.clockRows")}
               value={settings.overlay.maxEvents}
               min={3}
               max={8}
@@ -1204,7 +1210,7 @@ export function OverlaySettingsPage({
               }
             />
             <SliderSetting
-              label="Corner radius"
+              label={t("overlay.cornerRadius")}
               value={settings.overlay.cornerRadius}
               min={0}
               max={32}
@@ -1219,7 +1225,7 @@ export function OverlaySettingsPage({
             />
             <Separator />
             <SliderSetting
-              label="Mini map size"
+              label={t("overlay.miniMapSize")}
               value={settings.overlay.miniMap.size}
               min={220}
               max={420}
@@ -1252,6 +1258,7 @@ export function SettingsPage({
   hotkeyError: string;
   onSettingsChange: (settings: AppSettings) => void;
 }) {
+  const { t } = useI18n(settings.language);
   const [capturingHotkey, setCapturingHotkey] = useState<{
     id: keyof AppSettings["hotkeys"];
     label: string;
@@ -1273,38 +1280,38 @@ export function SettingsPage({
   }> = [
     {
       id: "toggleOverlay",
-      label: "Toggle overlay",
-      description: "Show or hide the overlay window.",
+      label: t("hotkeys.toggleOverlay.label"),
+      description: t("hotkeys.toggleOverlay.description"),
     },
     {
       id: "showMainWindow",
-      label: "Show main window",
-      description: "Bring Isekai back to the foreground.",
+      label: t("hotkeys.showMainWindow.label"),
+      description: t("hotkeys.showMainWindow.description"),
     },
     {
       id: "cycleOverlayMode",
-      label: "Cycle overlay mode",
-      description: "Move between clock, route, and map layouts.",
+      label: t("hotkeys.cycleOverlayMode.label"),
+      description: t("hotkeys.cycleOverlayMode.description"),
     },
     {
       id: "nextRouteTarget",
-      label: "Next route target",
-      description: "Advance the active route target.",
+      label: t("hotkeys.nextRouteTarget.label"),
+      description: t("hotkeys.nextRouteTarget.description"),
     },
     {
       id: "previousRouteTarget",
-      label: "Previous route target",
-      description: "Return to the previous route target.",
+      label: t("hotkeys.previousRouteTarget.label"),
+      description: t("hotkeys.previousRouteTarget.description"),
     },
     {
       id: "toggleRouteTargetComplete",
-      label: "Toggle target complete",
-      description: "Mark the active target open or done.",
+      label: t("hotkeys.toggleRouteTargetComplete.label"),
+      description: t("hotkeys.toggleRouteTargetComplete.description"),
     },
     {
       id: "toggleMiniMapExpanded",
-      label: "Expand mini map",
-      description: "Switch the mini map between compact and expanded.",
+      label: t("hotkeys.toggleMiniMapExpanded.label"),
+      description: t("hotkeys.toggleMiniMapExpanded.description"),
     },
   ];
   const finishHotkeyCapture = (shortcut: string) => {
@@ -1325,8 +1332,8 @@ export function SettingsPage({
   return (
     <>
       <PageHeader
-        title="Settings"
-        description="Appearance, event filters, hotkeys, and time display preferences."
+        title={t("nav.settings")}
+        description={t("settings.actionDescription")}
         action={
           <div className="flex flex-wrap gap-2">
             <Badge variant="secondary" className="rounded-sm">
@@ -1342,7 +1349,7 @@ export function SettingsPage({
         <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="grid gap-1">
             <p className="text-sm font-semibold text-foreground">
-              Preferences
+              {t("settings.preferences")}
             </p>
             <p className="max-w-2xl text-xs text-muted-foreground">
               {settings.display.localTimeZone} / {settings.display.timeFormat}
@@ -1351,19 +1358,19 @@ export function SettingsPage({
           <TabsList className="h-10 w-full justify-start lg:w-auto">
             <TabsTrigger value="appearance" className="h-8 gap-2 px-4 text-sm">
               <Palette className="size-4" />
-              Appearance
+              {t("settings.appearance.title")}
             </TabsTrigger>
             <TabsTrigger value="events" className="h-8 gap-2 px-4 text-sm">
               <CalendarClock className="size-4" />
-              Events
+              {t("settings.tab.events")}
             </TabsTrigger>
             <TabsTrigger value="hotkeys" className="h-8 gap-2 px-4 text-sm">
               <Keyboard className="size-4" />
-              Hotkeys
+              {t("settings.tab.hotkeys")}
             </TabsTrigger>
             <TabsTrigger value="time" className="h-8 gap-2 px-4 text-sm">
               <Clock className="size-4" />
-              Time
+              {t("settings.tab.time")}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -1372,10 +1379,10 @@ export function SettingsPage({
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
             <SettingsPanel
               icon={<Palette />}
-              title="Appearance"
-              description="Choose the visual system used across the main window and overlay controls."
+              title={t("settings.appearance.title")}
+              description={t("settings.appearance.description")}
             >
-              <SettingGroup label="Theme">
+              <SettingGroup label={t("settings.info.theme")}>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {(["dark", "light", "system"] as const).map((theme) => (
                     <ChoiceButton
@@ -1383,17 +1390,17 @@ export function SettingsPage({
                       selected={settings.theme === theme}
                       label={
                         theme === "system"
-                          ? "System"
+                          ? t("common.system")
                           : theme === "dark"
-                            ? "Dark"
-                            : "Light"
+                            ? t("settings.theme.dark.label")
+                            : t("settings.theme.light.label")
                       }
                       description={
                         theme === "system"
-                          ? "Follow OS"
+                          ? t("settings.theme.system.description")
                           : theme === "dark"
-                            ? "Low glare"
-                            : "Bright UI"
+                            ? t("settings.theme.dark.description")
+                            : t("settings.theme.light.description")
                       }
                       icon={<Monitor className="size-4" />}
                       onClick={() => onSettingsChange({ ...settings, theme })}
@@ -1402,7 +1409,33 @@ export function SettingsPage({
                 </div>
               </SettingGroup>
               <Separator />
-              <SettingGroup label="Accent color">
+              <SettingGroup label={t("common.language")}>
+                <Select
+                  value={settings.language}
+                  onValueChange={(language: LocaleCode) =>
+                    onSettingsChange({ ...settings, language })
+                  }
+                >
+                  <SelectTrigger id="language" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUPPORTED_LOCALES.map((locale) => (
+                      <SelectItem key={locale.code} value={locale.code}>
+                        {locale.nativeName}
+                        {locale.nativeName === locale.englishName
+                          ? ""
+                          : ` / ${locale.englishName}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.language.description")}
+                </p>
+              </SettingGroup>
+              <Separator />
+              <SettingGroup label={t("settings.accentColor")}>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                   {ACCENT_OPTIONS.map((accent) => (
                     <Button
@@ -1434,7 +1467,7 @@ export function SettingsPage({
                 </div>
               </SettingGroup>
               <Separator />
-              <SettingGroup label="Interface font">
+              <SettingGroup label={t("settings.interfaceFont")}>
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                   {FONT_OPTIONS.map((font) => (
                     <Button
@@ -1465,15 +1498,16 @@ export function SettingsPage({
             </SettingsPanel>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Current Style</CardTitle>
+                <CardTitle className="text-base">{t("settings.currentStyle.title")}</CardTitle>
                 <CardDescription>
-                  A quick readout of the active interface choices.
+                  {t("settings.currentStyle.description")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3">
-                <InfoRow label="Theme" value={settings.theme} />
-                <InfoRow label="Accent" value={selectedAccent.label} />
-                <InfoRow label="Font" value={selectedFont.label} />
+                <InfoRow label={t("settings.info.theme")} value={settings.theme} />
+                <InfoRow label={t("common.language")} value={settings.language} />
+                <InfoRow label={t("settings.info.accent")} value={selectedAccent.label} />
+                <InfoRow label={t("settings.info.font")} value={selectedFont.label} />
               </CardContent>
             </Card>
           </div>
@@ -1482,8 +1516,8 @@ export function SettingsPage({
         <TabsContent value="events" className="mt-4">
           <SettingsPanel
             icon={<CalendarClock />}
-            title="Event Filters"
-            description="Choose which timers are eligible for overview rows, reminders, and overlay clock rows."
+            title={t("settings.events.title")}
+            description={t("settings.events.description")}
           >
             <div className="grid gap-2 md:grid-cols-2">
               {EVENT_DEFINITIONS.map((definition) => (
@@ -1520,8 +1554,8 @@ export function SettingsPage({
         <TabsContent value="hotkeys" className="mt-4">
           <SettingsPanel
             icon={<Keyboard />}
-            title="Hotkeys"
-            description="Edit global shortcuts for overlay controls and route navigation."
+            title={t("settings.hotkeys.title")}
+            description={t("settings.hotkeys.description")}
           >
             <div className="grid gap-3">
               {hotkeyRows.map((row) => (
@@ -1559,12 +1593,12 @@ export function SettingsPage({
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
             <SettingsPanel
               icon={<Clock />}
-              title="Time Display"
-              description="Control how event rows present Sky time and your local timezone."
+              title={t("settings.time.title")}
+              description={t("settings.time.description")}
             >
               <SettingSwitch
-                label="Show Sky Time"
-                description="Display Sky Mean Time beside event rows."
+                label={t("settings.time.showSky")}
+                description={t("settings.time.showSky.description")}
                 checked={settings.display.showSkyTime}
                 onCheckedChange={(showSkyTime) =>
                   onSettingsChange({
@@ -1574,8 +1608,8 @@ export function SettingsPage({
                 }
               />
               <SettingSwitch
-                label="Show local time"
-                description="Display converted local labels beside event rows."
+                label={t("settings.time.showLocal")}
+                description={t("settings.time.showLocal.description")}
                 checked={settings.display.showLocalTime}
                 onCheckedChange={(showLocalTime) =>
                   onSettingsChange({
@@ -1585,7 +1619,7 @@ export function SettingsPage({
                 }
               />
               <Separator />
-              <SettingGroup label="Time format">
+              <SettingGroup label={t("settings.time.format")}>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {(["system", "12h", "24h"] as const).map((timeFormat) => (
                     <ChoiceButton
@@ -1593,17 +1627,17 @@ export function SettingsPage({
                       selected={settings.display.timeFormat === timeFormat}
                       label={
                         timeFormat === "system"
-                          ? "System"
+                          ? t("common.system")
                           : timeFormat === "12h"
-                            ? "12-hour"
-                            : "24-hour"
+                            ? t("settings.time.format12")
+                            : t("settings.time.format24")
                       }
                       description={
                         timeFormat === "system"
-                          ? "Use locale"
+                          ? t("settings.time.formatSystem.description")
                           : timeFormat === "12h"
-                            ? "AM / PM"
-                            : "00:00"
+                            ? t("settings.time.format12.description")
+                            : t("settings.time.format24.description")
                       }
                       onClick={() =>
                         onSettingsChange({
@@ -1615,7 +1649,7 @@ export function SettingsPage({
                   ))}
                 </div>
               </SettingGroup>
-              <SettingGroup label="Local timezone">
+              <SettingGroup label={t("settings.time.localTimezone")}>
                 <Select
                   value={settings.display.localTimeZone}
                   onValueChange={(localTimeZone) =>
@@ -1644,15 +1678,15 @@ export function SettingsPage({
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Info className="size-4 text-primary" />
-                  About
+                  {t("common.about")}
                 </CardTitle>
                 <CardDescription>
-                  Isekai desktop settings.
+                  {t("settings.time.aboutDescription")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3">
-                <InfoRow label="Timezone" value={settings.display.localTimeZone} />
-                <InfoRow label="Format" value={settings.display.timeFormat} />
+                <InfoRow label={t("settings.info.timezone")} value={settings.display.localTimeZone} />
+                <InfoRow label={t("settings.info.format")} value={settings.display.timeFormat} />
               </CardContent>
             </Card>
           </div>

@@ -32,6 +32,7 @@ import type { AppSettings } from "@/domain/types";
 import type { PlannerState } from "@/domain/planner";
 import type { AppUpdateState } from "@/tauri/updater";
 import { cn } from "@/lib/utils";
+import { useI18n, type MessageKey } from "@/i18n";
 
 export type AppPage =
   | "overview"
@@ -56,39 +57,39 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 }
 
 const sections: Array<{
-  title: string;
-  items: Array<{ id: AppPage; title: string; icon: React.ElementType }>;
+  titleKey: MessageKey;
+  items: Array<{ id: AppPage; titleKey: MessageKey; icon: React.ElementType }>;
 }> = [
   {
-    title: "Clock",
+    titleKey: "nav.clock",
     items: [
-      { id: "overview", title: "Overview", icon: Sparkles },
-      { id: "overlay", title: "Overlay", icon: Eye },
+      { id: "overview", titleKey: "nav.overview", icon: Sparkles },
+      { id: "overlay", titleKey: "nav.overlay", icon: Eye },
     ],
   },
   {
-    title: "Planner",
+    titleKey: "nav.planner",
     items: [
-      { id: "calendar", title: "Calendar", icon: CalendarDays },
-      { id: "routes", title: "Routes", icon: Map },
-      { id: "candle-runs", title: "Candle Run", icon: Flame },
-      { id: "goals", title: "Goals", icon: CheckSquare },
-      { id: "collection", title: "Collection", icon: Search },
+      { id: "calendar", titleKey: "nav.calendar", icon: CalendarDays },
+      { id: "routes", titleKey: "nav.routes", icon: Map },
+      { id: "candle-runs", titleKey: "nav.candleRuns", icon: Flame },
+      { id: "goals", titleKey: "nav.goals", icon: CheckSquare },
+      { id: "collection", titleKey: "nav.collection", icon: Search },
     ],
   },
   {
-    title: "System",
+    titleKey: "nav.system",
     items: [
-      { id: "settings", title: "Settings", icon: Settings },
-      { id: "updates", title: "Updates", icon: Upload },
+      { id: "settings", titleKey: "nav.settings", icon: Settings },
+      { id: "updates", titleKey: "nav.updates", icon: Upload },
     ],
   },
 ];
 
 const themeOptions = [
-  { id: "dark", title: "Dark", icon: Moon },
-  { id: "light", title: "Light", icon: Sun },
-  { id: "system", title: "Auto", icon: Monitor },
+  { id: "dark", titleKey: "settings.theme.dark.label", icon: Moon },
+  { id: "light", titleKey: "settings.theme.light.label", icon: Sun },
+  { id: "system", titleKey: "common.auto", icon: Monitor },
 ] as const;
 
 export function AppSidebar({
@@ -102,6 +103,7 @@ export function AppSidebar({
   onThemeChange,
   ...props
 }: AppSidebarProps) {
+  const { t } = useI18n(settings.language);
   const activeTheme =
     themeOptions.find((theme) => theme.id === settings.theme) ?? themeOptions[0];
   const ActiveThemeIcon = activeTheme.icon;
@@ -123,12 +125,13 @@ export function AppSidebar({
         <SidebarSeparator className="mx-0 group-data-[collapsible=icon]:hidden" />
         {sections.map((section) => (
           <SidebarSection
-            key={section.title}
-            title={section.title}
+            key={section.titleKey}
+            title={t(section.titleKey)}
             items={section.items}
             activePage={activePage}
             updateAvailable={updateState.status === "available"}
             onPageChange={onPageChange}
+            t={t}
           />
         ))}
       </SidebarContent>
@@ -152,17 +155,17 @@ export function AppSidebar({
               <Badge className="h-5 rounded-sm px-1.5 text-[0.65rem]">New</Badge>
             </button>
           ) : null}
-          <ThemeTabs value={settings.theme} onValueChange={onThemeChange} />
+          <ThemeTabs value={settings.theme} onValueChange={onThemeChange} t={t} />
         </div>
         <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
           <SidebarMenuItem>
             <SidebarMenuButton
               type="button"
-              tooltip={`Theme: ${activeTheme.title}`}
+              tooltip={`${t("settings.info.theme")}: ${t(activeTheme.titleKey)}`}
               onClick={() => onThemeChange(nextTheme(settings.theme))}
             >
               <ActiveThemeIcon />
-              <span>{activeTheme.title}</span>
+              <span>{t(activeTheme.titleKey)}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -175,9 +178,11 @@ export function AppSidebar({
 function ThemeTabs({
   value,
   onValueChange,
+  t,
 }: {
   value: AppSettings["theme"];
   onValueChange: (theme: AppSettings["theme"]) => void;
+  t: (key: MessageKey) => string;
 }) {
   return (
     <div
@@ -202,7 +207,7 @@ function ThemeTabs({
           >
             <theme.icon className="size-3.5 shrink-0" />
             <span className="min-w-0 truncate whitespace-nowrap text-center">
-              {theme.title}
+              {t(theme.titleKey)}
             </span>
           </button>
         );
@@ -222,12 +227,14 @@ function SidebarSection({
   activePage,
   updateAvailable,
   onPageChange,
+  t,
 }: {
   title: string;
-  items: Array<{ id: AppPage; title: string; icon: React.ElementType }>;
+  items: Array<{ id: AppPage; titleKey: MessageKey; icon: React.ElementType }>;
   activePage: AppPage;
   updateAvailable: boolean;
   onPageChange: (page: AppPage) => void;
+  t: (key: MessageKey) => string;
 }) {
   return (
     <SidebarGroup className="px-3 py-1 group-data-[collapsible=icon]:px-2">
@@ -241,15 +248,15 @@ function SidebarSection({
               <SidebarMenuButton
                 type="button"
                 isActive={activePage === item.id}
-                tooltip={item.title}
+                tooltip={t(item.titleKey)}
                 className="h-8 px-2.5 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2!"
                 onClick={() => onPageChange(item.id)}
               >
                 <item.icon />
-                <span>{item.title}</span>
+                <span>{t(item.titleKey)}</span>
                 {item.id === "updates" && updateAvailable ? (
                   <Badge className="ml-auto h-5 rounded-sm px-1.5 text-[0.65rem]">
-                    New
+                    {t("common.new")}
                   </Badge>
                 ) : null}
               </SidebarMenuButton>

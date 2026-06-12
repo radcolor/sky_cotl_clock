@@ -68,6 +68,7 @@ import {
   type UpdateStatePatch,
 } from "@/tauri/updater";
 import { listenNativeThemeChange, syncNativeTheme } from "@/tauri/theme";
+import { getLocaleDirection, useI18n, type MessageKey } from "@/i18n";
 
 const SETTINGS_KEY = "sky-cotl-clock-settings";
 const REMINDERS_KEY = "sky-cotl-clock-reminders";
@@ -182,6 +183,7 @@ function App() {
   const [hotkeyError, setHotkeyError] = useState("");
   const [updateState, setUpdateState] = useState<AppUpdateState>(initialUpdateState);
   const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("dark");
+  const { t } = useI18n(settings.language);
   const pendingUpdate = useRef<Update | null>(null);
   const latestSettings = useRef(settings);
   const gamePresence = useRef({
@@ -198,6 +200,11 @@ function App() {
   useEffect(() => {
     latestSettings.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    document.documentElement.lang = settings.language;
+    document.documentElement.dir = getLocaleDirection(settings.language);
+  }, [settings.language]);
 
   useEffect(() => {
     void getWindowLabel().then((label) => {
@@ -801,7 +808,7 @@ function App() {
     <TooltipProvider>
       <div className="app-main-shell flex h-svh min-h-0 flex-col overflow-hidden">
         <SidebarProvider className="min-h-0 flex-1 flex-col">
-          <AppTitlebar activePage={activePage} />
+          <AppTitlebar pageTitle={t(pageTitleKey(activePage))} />
           <div className="app-workspace flex min-h-0 flex-1">
             <AppSidebar
               activePage={activePage}
@@ -930,7 +937,7 @@ function PageTransition({
   );
 }
 
-function AppTitlebar({ activePage }: { activePage: AppPage }) {
+function AppTitlebar({ pageTitle }: { pageTitle: string }) {
   const { toggleSidebar } = useSidebar();
   const isMac = navigator.userAgent.includes("Mac");
   const safeWindowAction = (
@@ -986,7 +993,7 @@ function AppTitlebar({ activePage }: { activePage: AppPage }) {
             data-tauri-drag-region
             className="hidden truncate text-xs font-medium text-muted-foreground sm:block"
           >
-            {pageTitle(activePage)}
+            {pageTitle}
           </span>
           <div
             data-tauri-drag-region
@@ -1101,6 +1108,7 @@ function PageContent({
   onRefreshUpdate: () => void;
   onInstallUpdate: () => void;
 }) {
+  const { t } = useI18n(settings.language);
   if (activePage === "overview") {
     return (
       <OverviewPage
@@ -1172,23 +1180,23 @@ function PageContent({
 
   return (
     <PageHeader
-      title="Not Found"
-      description="The selected page is not available."
+      title={t("page.notFound.title")}
+      description={t("page.notFound.description")}
     />
   );
 }
 
-function pageTitle(page: AppPage) {
-  const titles: Record<AppPage, string> = {
-    overview: "Overview",
-    calendar: "Calendar",
-    routes: "Routes",
-    "candle-runs": "Candle Run",
-    goals: "Goals",
-    collection: "Collection",
-    overlay: "Overlay",
-    settings: "Settings",
-    updates: "Updates",
+function pageTitleKey(page: AppPage): MessageKey {
+  const titles: Record<AppPage, MessageKey> = {
+    overview: "nav.overview",
+    calendar: "nav.calendar",
+    routes: "nav.routes",
+    "candle-runs": "nav.candleRuns",
+    goals: "nav.goals",
+    collection: "nav.collection",
+    overlay: "nav.overlay",
+    settings: "nav.settings",
+    updates: "nav.updates",
   };
 
   return titles[page];

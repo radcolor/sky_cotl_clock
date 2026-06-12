@@ -189,3 +189,29 @@ visit is active.
 
 Acceptance: Isekai can behave like a companion app that wakes up around Sky
 without touching the game internals or creating ToS-risky automation.
+
+## Phase 11: Localization V1
+
+- [x] Add locale metadata with BCP 47 language codes and text direction.
+- [x] Add first-launch language detection from `navigator.languages`.
+- [x] Add `language` to `AppSettings` with migration-safe defaults.
+- [x] Add English source messages and seeded translation files for:
+  - [x] English (`en`)
+  - [x] Hindi (`hi`)
+  - [x] Spanish (`es`)
+  - [x] Simplified Chinese / Mandarin (`zh-Hans`)
+  - [x] Russian (`ru`)
+  - [x] Arabic (`ar`)
+  - [x] French (`fr`)
+  - [x] Portuguese (`pt`)
+  - [x] German (`de`)
+  - [x] Japanese (`ja`)
+- [x] Add a Settings language selector using the existing shadcn `Select`.
+- [x] Apply selected locale to `html lang` and `dir`.
+- [x] Replace core UI strings with translation keys.
+- [x] Document translation contribution workflow for open-source contributors.
+- [x] Add tests for locale detection, fallback behavior, and settings migration.
+
+Acceptance: first launch picks the best supported language from the browser,
+users can change language in Settings, unsupported strings fall back to English,
+and contributors can add or improve translations without changing app logic.

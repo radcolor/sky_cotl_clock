@@ -1,4 +1,5 @@
 import type { AppSettings, EventDefinition } from "./types";
+import { detectPreferredLocale, resolveLocale } from "@/i18n";
 
 function detectLocalTimeZone() {
   try {
@@ -113,6 +114,7 @@ export const EVENT_DEFINITIONS: EventDefinition[] = [
 ];
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  language: detectPreferredLocale(),
   theme: "dark",
   appearance: {
     accentColor: "mira",
@@ -193,6 +195,7 @@ export function mergeSettings(stored: Partial<AppSettings> | null): AppSettings 
     : DEFAULT_SETTINGS.overlay.mode;
 
   return {
+    language: resolveLocale(stored.language),
     theme: stored.theme ?? DEFAULT_SETTINGS.theme,
     appearance: { ...DEFAULT_SETTINGS.appearance, ...stored.appearance },
     overlay: {
