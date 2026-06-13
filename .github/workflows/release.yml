@@ -119,8 +119,6 @@ jobs:
             username: "Isekai Releases",
             content: [
               changelog,
-              "",
-              "",
               `[View GitHub release](${process.env.RELEASE_URL})`,
               "",
               ""
