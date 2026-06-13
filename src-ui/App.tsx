@@ -26,6 +26,10 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_SETTINGS, mergeSettings } from "@/domain/settings";
 import { generateEventInstances } from "@/domain/events";
 import {
+  buildDiscordRpcPresence,
+  type DiscordRpcPresencePayload,
+} from "@/domain/discordRpc";
+import {
   deserializePlannerState,
   moveActiveRouteTarget,
   PLANNER_STORAGE_KEY,
@@ -51,6 +55,7 @@ import {
   CalendarPage,
   CandleRunsPage,
   CollectionPage,
+  DiscordRpcPage,
   GoalsPage,
   Overlay,
   OverlaySettingsPage,
@@ -67,6 +72,12 @@ import {
   type AppUpdateState,
   type UpdateStatePatch,
 } from "@/tauri/updater";
+import {
+  clearDiscordRpc,
+  getDiscordRpcStatusForClient,
+  updateDiscordRpc,
+  type DiscordRpcStatus,
+} from "@/tauri/discord-rpc";
 import { listenNativeThemeChange, syncNativeTheme } from "@/tauri/theme";
 import { getLocaleDirection, useI18n, type MessageKey } from "@/i18n";
 
@@ -182,6 +193,12 @@ function App() {
   const [windowLabel, setWindowLabel] = useState<string | null>(null);
   const [hotkeyError, setHotkeyError] = useState("");
   const [updateState, setUpdateState] = useState<AppUpdateState>(initialUpdateState);
+  const [skyProcessRunning, setSkyProcessRunning] = useState(false);
+  const [discordRpcStatus, setDiscordRpcStatus] = useState<DiscordRpcStatus>({
+    configured: false,
+    connected: false,
+    active: false,
+  });
   const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("dark");
   const { t } = useI18n(settings.language);
   const pendingUpdate = useRef<Update | null>(null);
@@ -192,6 +209,7 @@ function App() {
     showTimer: 0,
     checking: false,
   });
+  const discordRpcSessionStartedAt = useRef(Date.now());
   const enabledEventsKey = useMemo(
     () => JSON.stringify(settings.events),
     [settings.events],
@@ -434,8 +452,8 @@ function App() {
   useEffect(() => {
     if (
       windowLabel !== "main" ||
-      !settings.overlay.enabled ||
-      !settings.overlay.gameDetection.enabled ||
+      (!settings.overlay.enabled && !settings.discordRpc.enabled) ||
+      (!settings.overlay.gameDetection.enabled && !settings.discordRpc.enabled) ||
       !isTauriRuntime()
     ) {
       const state = gamePresence.current;
@@ -444,6 +462,7 @@ function App() {
         state.showTimer = 0;
       }
       state.running = false;
+      setSkyProcessRunning(false);
       state.overlayShownForLaunch = false;
       state.checking = false;
       return;
@@ -454,9 +473,11 @@ function App() {
     const processNames = settings.overlay.gameDetection.processNames;
     const detection = settings.overlay.gameDetection;
     const delayMs = detection.startupDelayMs;
+    const shouldManageOverlay = settings.overlay.enabled && detection.enabled;
 
     const scheduleOverlay = () => {
       if (
+        !shouldManageOverlay ||
         !detection.showOverlayOnStart ||
         state.overlayShownForLaunch ||
         state.showTimer
@@ -490,20 +511,27 @@ function App() {
       if (running) {
         if (!state.running) {
           state.running = true;
+          discordRpcSessionStartedAt.current = Date.now();
         }
+        setSkyProcessRunning(true);
         scheduleOverlay();
       }
 
       if (!running && state.running) {
         state.running = false;
+        setSkyProcessRunning(false);
         state.overlayShownForLaunch = false;
         if (state.showTimer) {
           window.clearTimeout(state.showTimer);
           state.showTimer = 0;
         }
-        if (detection.hideOverlayOnExit) {
+        if (shouldManageOverlay && detection.hideOverlayOnExit) {
           await hideOverlay();
         }
+      }
+
+      if (!running) {
+        setSkyProcessRunning(false);
       }
     };
 
@@ -520,6 +548,7 @@ function App() {
     };
   }, [
     settings.overlay.enabled,
+    settings.discordRpc.enabled,
     settings.overlay.gameDetection.enabled,
     settings.overlay.gameDetection.hideOverlayOnExit,
     settings.overlay.gameDetection.processNames,
@@ -527,6 +556,34 @@ function App() {
     settings.overlay.gameDetection.startupDelayMs,
     windowLabel,
   ]);
+
+  useEffect(() => {
+    if (windowLabel !== "main" || !isTauriRuntime()) {
+      return;
+    }
+
+    let cancelled = false;
+    void getDiscordRpcStatusForClient(settings.discordRpc.clientId)
+      .then((status) => {
+        if (!cancelled) {
+          setDiscordRpcStatus(status);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDiscordRpcStatus({
+            configured: false,
+            connected: false,
+            active: false,
+            lastError: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.discordRpc.clientId, windowLabel]);
 
   const patchUpdateState = (patch: UpdateStatePatch) =>
     setUpdateState((current) => ({ ...current, ...patch }));
@@ -706,7 +763,65 @@ function App() {
     () => events.slice(0, settings.overlay.maxEvents),
     [events, settings.overlay.maxEvents],
   );
+  const discordRpcPresence = useMemo(
+    () =>
+      buildDiscordRpcPresence({
+        settings,
+        events,
+        planner,
+        skyProcessRunning,
+        sessionStartedAtMs: discordRpcSessionStartedAt.current,
+      }),
+    [events, planner, settings, skyProcessRunning],
+  );
+  const discordRpcPresenceKey = useMemo(
+    () => JSON.stringify(discordRpcPresence),
+    [discordRpcPresence],
+  );
   const firedReminders = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (windowLabel !== "main" || !isTauriRuntime()) {
+      return;
+    }
+
+    let cancelled = false;
+    const syncPresence = async (presence: DiscordRpcPresencePayload | null) => {
+      try {
+        if (presence && discordRpcStatus.configured) {
+          await updateDiscordRpc(presence, settings.discordRpc.clientId);
+        } else {
+          await clearDiscordRpc();
+        }
+
+        const status = await getDiscordRpcStatusForClient(settings.discordRpc.clientId);
+        if (!cancelled) {
+          setDiscordRpcStatus(status);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDiscordRpcStatus((current) => ({
+            ...current,
+            connected: false,
+            active: false,
+            lastError: error instanceof Error ? error.message : String(error),
+          }));
+        }
+      }
+    };
+
+    void syncPresence(discordRpcPresence);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    discordRpcPresence,
+    discordRpcPresenceKey,
+    discordRpcStatus.configured,
+    settings.discordRpc.clientId,
+    windowLabel,
+  ]);
 
   useEffect(() => {
     if (windowLabel !== "main") {
@@ -831,6 +946,9 @@ function App() {
                   settings={settings}
                   hotkeyError={hotkeyError}
                   updateState={updateState}
+                  skyProcessRunning={skyProcessRunning}
+                  discordRpcStatus={discordRpcStatus}
+                  discordRpcPresence={discordRpcPresence}
                   reminders={reminders}
                   onPlannerChange={setPlanner}
                   onSettingsChange={setSettings}
@@ -858,6 +976,9 @@ function PageTransition({
   settings,
   hotkeyError,
   updateState,
+  skyProcessRunning,
+  discordRpcStatus,
+  discordRpcPresence,
   reminders,
   onPlannerChange,
   onSettingsChange,
@@ -874,6 +995,9 @@ function PageTransition({
   settings: AppSettings;
   hotkeyError: string;
   updateState: AppUpdateState;
+  skyProcessRunning: boolean;
+  discordRpcStatus: DiscordRpcStatus;
+  discordRpcPresence: DiscordRpcPresencePayload | null;
   reminders: Record<string, boolean>;
   onPlannerChange: (planner: PlannerState) => void;
   onSettingsChange: (settings: AppSettings) => void;
@@ -925,6 +1049,9 @@ function PageTransition({
         settings={settings}
         hotkeyError={hotkeyError}
         updateState={updateState}
+        skyProcessRunning={skyProcessRunning}
+        discordRpcStatus={discordRpcStatus}
+        discordRpcPresence={discordRpcPresence}
         reminders={reminders}
         onPlannerChange={onPlannerChange}
         onSettingsChange={onSettingsChange}
@@ -1084,6 +1211,9 @@ function PageContent({
   settings,
   hotkeyError,
   updateState,
+  skyProcessRunning,
+  discordRpcStatus,
+  discordRpcPresence,
   reminders,
   onPlannerChange,
   onSettingsChange,
@@ -1100,6 +1230,9 @@ function PageContent({
   settings: AppSettings;
   hotkeyError: string;
   updateState: AppUpdateState;
+  skyProcessRunning: boolean;
+  discordRpcStatus: DiscordRpcStatus;
+  discordRpcPresence: DiscordRpcPresencePayload | null;
   reminders: Record<string, boolean>;
   onPlannerChange: (planner: PlannerState) => void;
   onSettingsChange: (settings: AppSettings) => void;
@@ -1158,6 +1291,18 @@ function PageContent({
     );
   }
 
+  if (activePage === "discord-rpc") {
+    return (
+      <DiscordRpcPage
+        settings={settings}
+        skyProcessRunning={skyProcessRunning}
+        status={discordRpcStatus}
+        presence={discordRpcPresence}
+        onSettingsChange={onSettingsChange}
+      />
+    );
+  }
+
   if (activePage === "settings") {
     return (
       <SettingsPage
@@ -1195,6 +1340,7 @@ function pageTitleKey(page: AppPage): MessageKey {
     goals: "nav.goals",
     collection: "nav.collection",
     overlay: "nav.overlay",
+    "discord-rpc": "nav.discordRpc",
     settings: "nav.settings",
     updates: "nav.updates",
   };

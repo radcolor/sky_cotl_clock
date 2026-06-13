@@ -11,8 +11,10 @@ import {
   CircleCheck,
   Clock,
   Download,
+  ExternalLink,
   Eye,
   Flame,
+  Gamepad2,
   Info,
   Keyboard,
   Monitor,
@@ -40,6 +42,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -73,6 +76,11 @@ import {
 } from "@/domain/skyTime";
 import type { AppSettings, EventInstance } from "@/domain/types";
 import {
+  ISEKAI_DISCORD_URL,
+  SKY_DISCORD_URL,
+  type DiscordRpcPresencePayload,
+} from "@/domain/discordRpc";
+import {
   SUPPORTED_LOCALES,
   useI18n,
   type LocaleCode,
@@ -88,6 +96,7 @@ import type {
 } from "@/data/skygame";
 import { countCandleGroupWax, skyDataIndex } from "@/data/skygame";
 import { formatBytes, type AppUpdateState } from "@/tauri/updater";
+import type { DiscordRpcStatus } from "@/tauri/discord-rpc";
 import { isTauriRuntime } from "@/tauri/overlay";
 
 type SkyDataModule = typeof import("@/data/skygame");
@@ -137,6 +146,70 @@ const OVERLAY_MODE_OPTIONS: Array<{
     value: "clock-route",
     labelKey: "overlay.mode.clockRoute",
     descriptionKey: "overlay.mode.clockRoute.description",
+  },
+];
+
+const DISCORD_RPC_MODE_OPTIONS: Array<{
+  value: AppSettings["discordRpc"]["mode"];
+  labelKey: MessageKey;
+  descriptionKey: MessageKey;
+}> = [
+  {
+    value: "auto",
+    labelKey: "discordRpc.mode.auto",
+    descriptionKey: "discordRpc.mode.auto.description",
+  },
+  {
+    value: "events",
+    labelKey: "discordRpc.mode.events",
+    descriptionKey: "discordRpc.mode.events.description",
+  },
+  {
+    value: "candleRun",
+    labelKey: "discordRpc.mode.candleRun",
+    descriptionKey: "discordRpc.mode.candleRun.description",
+  },
+  {
+    value: "route",
+    labelKey: "discordRpc.mode.route",
+    descriptionKey: "discordRpc.mode.route.description",
+  },
+  {
+    value: "goals",
+    labelKey: "discordRpc.mode.goals",
+    descriptionKey: "discordRpc.mode.goals.description",
+  },
+  {
+    value: "overlay",
+    labelKey: "discordRpc.mode.overlay",
+    descriptionKey: "discordRpc.mode.overlay.description",
+  },
+];
+
+const DISCORD_RPC_PRESET_OPTIONS: Array<{
+  value: AppSettings["discordRpc"]["safePreset"];
+  labelKey: MessageKey;
+  descriptionKey: MessageKey;
+}> = [
+  {
+    value: "planning",
+    labelKey: "discordRpc.preset.planning",
+    descriptionKey: "discordRpc.preset.planning.description",
+  },
+  {
+    value: "farmingWax",
+    labelKey: "discordRpc.preset.farmingWax",
+    descriptionKey: "discordRpc.preset.farmingWax.description",
+  },
+  {
+    value: "trackingGoals",
+    labelKey: "discordRpc.preset.trackingGoals",
+    descriptionKey: "discordRpc.preset.trackingGoals.description",
+  },
+  {
+    value: "watchingTimers",
+    labelKey: "discordRpc.preset.watchingTimers",
+    descriptionKey: "discordRpc.preset.watchingTimers.description",
   },
 ];
 
@@ -1244,6 +1317,253 @@ export function OverlaySettingsPage({
           </CardContent>
         </Card>
         <OverlayPreview events={events} planner={planner} settings={settings} />
+      </div>
+    </>
+  );
+}
+
+export function DiscordRpcPage({
+  settings,
+  skyProcessRunning,
+  status,
+  presence,
+  onSettingsChange,
+}: {
+  settings: AppSettings;
+  skyProcessRunning: boolean;
+  status: DiscordRpcStatus;
+  presence: DiscordRpcPresencePayload | null;
+  onSettingsChange: (settings: AppSettings) => void;
+}) {
+  const { t } = useI18n(settings.language);
+  const selectedMode =
+    DISCORD_RPC_MODE_OPTIONS.find(
+      (mode) => mode.value === settings.discordRpc.mode,
+    ) ?? DISCORD_RPC_MODE_OPTIONS[0];
+  const selectedPreset =
+    DISCORD_RPC_PRESET_OPTIONS.find(
+      (preset) => preset.value === settings.discordRpc.safePreset,
+    ) ?? DISCORD_RPC_PRESET_OPTIONS[0];
+  const availability = !status.configured
+    ? t("discordRpc.status.missingClientId")
+    : !settings.discordRpc.enabled
+      ? t("discordRpc.status.disabled")
+      : settings.discordRpc.requireSkyDetection && !skyProcessRunning
+        ? t("discordRpc.status.waitingForSky")
+        : status.active
+          ? t("discordRpc.status.active")
+          : t("discordRpc.status.ready");
+
+  return (
+    <>
+      <PageHeader
+        title={t("nav.discordRpc")}
+        description={t("discordRpc.description")}
+        action={
+          <Badge variant={status.active ? "default" : "secondary"} className="rounded-sm">
+            {availability}
+          </Badge>
+        }
+      />
+      <div className="grid gap-4 p-5 xl:grid-cols-[360px_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("discordRpc.controls.title")}</CardTitle>
+            <CardDescription>
+              {t("discordRpc.controls.description")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <SettingSwitch
+              label={t("discordRpc.enable")}
+              description={t("discordRpc.enable.description")}
+              checked={settings.discordRpc.enabled}
+              disabled={!status.configured}
+              onCheckedChange={(enabled) =>
+                onSettingsChange({
+                  ...settings,
+                  discordRpc: { ...settings.discordRpc, enabled },
+                })
+              }
+            />
+            <Separator />
+            <div className="grid gap-2">
+              <Label htmlFor="discord-rpc-client-id">{t("discordRpc.clientId")}</Label>
+              <Input
+                id="discord-rpc-client-id"
+                value={settings.discordRpc.clientId}
+                placeholder={t("discordRpc.clientId.placeholder")}
+                onChange={(event) =>
+                  onSettingsChange({
+                    ...settings,
+                    discordRpc: {
+                      ...settings.discordRpc,
+                      clientId: event.target.value,
+                    },
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("discordRpc.clientId.description")}
+              </p>
+            </div>
+            <Separator />
+            <div className="grid gap-2">
+              <Label htmlFor="discord-rpc-mode">{t("discordRpc.mode")}</Label>
+              <Select
+                value={settings.discordRpc.mode}
+                onValueChange={(mode: AppSettings["discordRpc"]["mode"]) =>
+                  onSettingsChange({
+                    ...settings,
+                    discordRpc: { ...settings.discordRpc, mode },
+                  })
+                }
+              >
+                <SelectTrigger id="discord-rpc-mode" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {DISCORD_RPC_MODE_OPTIONS.map((mode) => (
+                      <SelectItem key={mode.value} value={mode.value}>
+                        {t(mode.labelKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t(selectedMode.descriptionKey)}
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="discord-rpc-preset">{t("discordRpc.safePreset")}</Label>
+              <Select
+                value={settings.discordRpc.safePreset}
+                onValueChange={(
+                  safePreset: AppSettings["discordRpc"]["safePreset"],
+                ) =>
+                  onSettingsChange({
+                    ...settings,
+                    discordRpc: { ...settings.discordRpc, safePreset },
+                  })
+                }
+              >
+                <SelectTrigger id="discord-rpc-preset" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {DISCORD_RPC_PRESET_OPTIONS.map((preset) => (
+                      <SelectItem key={preset.value} value={preset.value}>
+                        {t(preset.labelKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t(selectedPreset.descriptionKey)}
+              </p>
+            </div>
+            <Separator />
+            <SettingSwitch
+              label={t("discordRpc.showButtons")}
+              description={t("discordRpc.showButtons.description")}
+              checked={settings.discordRpc.showButtons}
+              onCheckedChange={(showButtons) =>
+                onSettingsChange({
+                  ...settings,
+                  discordRpc: { ...settings.discordRpc, showButtons },
+                })
+              }
+            />
+            <SettingSwitch
+              label={t("discordRpc.requireSkyDetection")}
+              description={t("discordRpc.requireSkyDetection.description")}
+              checked={settings.discordRpc.requireSkyDetection}
+              onCheckedChange={(requireSkyDetection) =>
+                onSettingsChange({
+                  ...settings,
+                  discordRpc: { ...settings.discordRpc, requireSkyDetection },
+                })
+              }
+            />
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("discordRpc.preview.title")}</CardTitle>
+              <CardDescription>
+                {t("discordRpc.preview.description")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-2 rounded-md border border-border bg-card/70 p-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                    <Gamepad2 className="size-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">
+                      {presence?.details ?? t("discordRpc.preview.emptyDetails")}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {presence?.state ?? t("discordRpc.preview.emptyState")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant={skyProcessRunning ? "default" : "secondary"}>
+                    {skyProcessRunning
+                      ? t("discordRpc.skyDetected")
+                      : t("discordRpc.skyNotDetected")}
+                  </Badge>
+                  <Badge variant={status.connected ? "default" : "secondary"}>
+                    {status.connected
+                      ? t("discordRpc.discordConnected")
+                      : t("discordRpc.discordDisconnected")}
+                  </Badge>
+                  <Badge variant={status.configured ? "default" : "secondary"}>
+                    {status.configured
+                      ? t("discordRpc.clientConfigured")
+                      : t("discordRpc.clientMissing")}
+                  </Badge>
+                </div>
+              </div>
+              {status.lastError ? (
+                <div className="rounded-md border border-border bg-muted/25 p-3 text-xs text-muted-foreground">
+                  {status.lastError}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("discordRpc.links.title")}</CardTitle>
+              <CardDescription>
+                {t("discordRpc.links.description")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              <Button asChild variant="secondary">
+                <a href={ISEKAI_DISCORD_URL} target="_blank" rel="noreferrer">
+                  <ExternalLink data-icon="inline-start" />
+                  Isekai
+                </a>
+              </Button>
+              <Button asChild variant="secondary">
+                <a href={SKY_DISCORD_URL} target="_blank" rel="noreferrer">
+                  <ExternalLink data-icon="inline-start" />
+                  Sky
+                </a>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </>
   );

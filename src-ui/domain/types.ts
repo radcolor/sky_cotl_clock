@@ -85,6 +85,14 @@ export interface AppSettings {
       size: number;
     };
   };
+  discordRpc: {
+    enabled: boolean;
+    clientId: string;
+    mode: "auto" | "events" | "candleRun" | "route" | "goals" | "overlay";
+    safePreset: "planning" | "farmingWax" | "trackingGoals" | "watchingTimers";
+    showButtons: boolean;
+    requireSkyDetection: boolean;
+  };
   hotkeys: {
     toggleOverlay: string;
     showMainWindow: string;

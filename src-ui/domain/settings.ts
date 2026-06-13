@@ -36,6 +36,20 @@ const OVERLAY_MODES: AppSettings["overlay"]["mode"][] = [
   "mini-map",
   "clock-route",
 ];
+const DISCORD_RPC_MODES: AppSettings["discordRpc"]["mode"][] = [
+  "auto",
+  "events",
+  "candleRun",
+  "route",
+  "goals",
+  "overlay",
+];
+const DISCORD_RPC_SAFE_PRESETS: AppSettings["discordRpc"]["safePreset"][] = [
+  "planning",
+  "farmingWax",
+  "trackingGoals",
+  "watchingTimers",
+];
 const SKY_PROCESS_NAMES = [
   "Sky.exe",
   "Sky",
@@ -141,6 +155,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
       size: 300,
     },
   },
+  discordRpc: {
+    enabled: false,
+    clientId: "",
+    mode: "auto",
+    safePreset: "planning",
+    showButtons: true,
+    requireSkyDetection: true,
+  },
   hotkeys: {
     toggleOverlay: "F8",
     showMainWindow: "Shift+F8",
@@ -193,6 +215,18 @@ export function mergeSettings(stored: Partial<AppSettings> | null): AppSettings 
   const overlayMode = OVERLAY_MODES.includes(overlay.mode)
     ? overlay.mode
     : DEFAULT_SETTINGS.overlay.mode;
+  const discordRpc = {
+    ...DEFAULT_SETTINGS.discordRpc,
+    ...stored.discordRpc,
+  };
+  const discordRpcMode = DISCORD_RPC_MODES.includes(discordRpc.mode)
+    ? discordRpc.mode
+    : DEFAULT_SETTINGS.discordRpc.mode;
+  const discordRpcSafePreset = DISCORD_RPC_SAFE_PRESETS.includes(
+    discordRpc.safePreset,
+  )
+    ? discordRpc.safePreset
+    : DEFAULT_SETTINGS.discordRpc.safePreset;
 
   return {
     language: resolveLocale(stored.language),
@@ -227,6 +261,16 @@ export function mergeSettings(stored: Partial<AppSettings> | null): AppSettings 
           ),
         ),
       },
+    },
+    discordRpc: {
+      ...discordRpc,
+      mode: discordRpcMode,
+      safePreset: discordRpcSafePreset,
+      clientId:
+        typeof discordRpc.clientId === "string" ? discordRpc.clientId.trim() : "",
+      enabled: discordRpc.enabled === true,
+      showButtons: discordRpc.showButtons !== false,
+      requireSkyDetection: discordRpc.requireSkyDetection !== false,
     },
     hotkeys: { ...DEFAULT_SETTINGS.hotkeys, ...stored.hotkeys },
     events: { ...DEFAULT_SETTINGS.events, ...stored.events },

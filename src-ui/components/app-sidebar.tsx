@@ -4,6 +4,7 @@ import {
   CheckSquare,
   Eye,
   Flame,
+  Gamepad2,
   Map,
   Monitor,
   Moon,
@@ -36,6 +37,7 @@ import { useI18n, type MessageKey } from "@/i18n";
 
 export type AppPage =
   | "overview"
+  | "discord-rpc"
   | "calendar"
   | "candle-runs"
   | "goals"
@@ -65,6 +67,7 @@ const sections: Array<{
     items: [
       { id: "overview", titleKey: "nav.overview", icon: Sparkles },
       { id: "overlay", titleKey: "nav.overlay", icon: Eye },
+      { id: "discord-rpc", titleKey: "nav.discordRpc", icon: Gamepad2 },
     ],
   },
   {
